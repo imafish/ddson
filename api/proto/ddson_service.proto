@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package ddson;
+
+option go_package = "./internal/pb";
+
+service DDSONService {
+  rpc Register(RegisterRequest) returns (stream ServerMessage) {}
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse) {}
+  rpc Download(DownloadRequest) returns (stream DownloadStatus) {}
+  rpc Upload(DownloadData) returns (ReceiveStatus) {}
+}
+
+message RegisterRequest {
+  string name = 1;
+  string version = 2;
+}
+
+enum ServerMessageType {
+  MESSAGE = 0;
+  ERROR = 1;
+  TASK = 2;
+}
+
+message ServerMessage {
+  ServerMessageType type = 1;
+  string message = 2;
+  int64 timestamp = 3;
+}
+
+enum ClientState {
+  IDLE = 0;
+  BUSY = 1;
+}
+
+message HeartbeatRequest {
+  string name = 1;
+  ClientState state = 2;
+}
+
+message HeartbeatResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message DownloadRequest {
+  string version = 1;
+  string url = 2;
+  string checksum = 3;
+}
+
+enum DownloadStatusType {
+  PENDING = 0;
+  DOWNLOADING = 1;
+  VALIDATING = 2;
+  TRANSFERING = 3;
+  COMPLETED = 4;
+  FAILED = 5;
+}
+
+message DownloadStatus {
+  DownloadStatusType status = 1;
+  int32 progress = 2;
+  int32 speed = 3; // Bytes per second
+  int64 total = 4; // Total bytes to download
+  int64 downloaded = 5; // Bytes downloaded
+  bytes data = 6;
+  string message = 7;
+}
+
+message DownloadData {
+  string url = 1;
+  string checksum = 2;
+  int64 offset = 3;
+  int64 size = 4;
+  bytes data = 5;
+}
+
+message ReceiveStatus {
+  bool success = 1;
+  string message = 2;
+}

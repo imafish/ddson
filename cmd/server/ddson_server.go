@@ -3,7 +3,6 @@ package main
 import (
 	"log"
 	"net"
-	"sync"
 	"time"
 
 	"google.golang.org/grpc"
@@ -14,8 +13,8 @@ import (
 
 type server struct {
 	pb.UnimplementedDDSONServiceServer
-	clients     map[string]*clientInfo
-	clientsLock sync.RWMutex
+	clients  *clientList
+	taskList *taskList
 }
 
 func main() {
@@ -34,7 +33,8 @@ func main() {
 	)
 
 	serverInstance := &server{
-		clients: make(map[string]*clientInfo),
+		clients:  newClientList(),
+		taskList: newTaskList(),
 	}
 	pb.RegisterDDSONServiceServer(s, serverInstance)
 

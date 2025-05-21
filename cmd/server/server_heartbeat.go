@@ -9,9 +9,7 @@ import (
 
 func (s *server) Heartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*pb.HeartbeatResponse, error) {
 	log.Printf("Received heartbeat from client %s (state: %v)", req.Name, req.State)
-	s.clientsLock.Lock()
-	defer s.clientsLock.Unlock()
-	client, exists := s.clients[req.Name]
+	client, exists := s.clients.getClientByName(req.Name)
 
 	if !exists {
 		return &pb.HeartbeatResponse{
@@ -35,17 +33,18 @@ func (s *server) monitorClients() {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		s.clientsLock.Lock()
-		log.Printf("Checking client heartbeats...")
+		log.Printf("Checking dead clients...")
 		now := time.Now()
-		for name, client := range s.clients {
+
+		s.clients.mtx.Lock()
+		for name, client := range s.clients.clients {
 			if now.Sub(client.lastSeen) > 30*time.Second {
 				log.Printf("Client %s heartbeat timeout, removing", name)
-				delete(s.clients, name)
+				delete(s.clients.clients, name)
 				client.close()
 			}
 		}
-		log.Printf("Finshed checking client heartbeats.")
-		s.clientsLock.Unlock()
+		log.Printf("Finished checking dead clients.")
+		s.clients.mtx.Unlock()
 	}
 }

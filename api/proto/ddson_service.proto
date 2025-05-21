@@ -7,8 +7,9 @@ option go_package = "./internal/pb";
 service DDSONService {
   rpc Register(RegisterRequest) returns (stream ServerMessage) {}
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse) {}
-  rpc Download(DownloadRequest) returns (stream DownloadStatus) {}
   rpc Upload(stream UploadData) returns (ReceiveStatus) {}
+
+  rpc Download(DownloadRequest) returns (stream DownloadStatus) {}
 }
 
 message RegisterRequest {
@@ -49,22 +50,21 @@ message DownloadRequest {
   string version = 1;
   string url = 2;
   string checksum = 3;
+  string name = 4;
 }
 
 enum DownloadStatusType {
   PENDING = 0;
   DOWNLOADING = 1;
   VALIDATING = 2;
-  TRANSFERING = 3;
-  COMPLETED = 4;
-  FAILED = 5;
+  TRANSFERRING = 3;
 }
 
 message DownloadStatus {
   DownloadStatusType status = 1;
   int32 progress = 2;
-  int32 speed = 3; // Bytes per second
-  int64 total = 4; // Total bytes to download
+  int32 speed = 3;      // Bytes per second
+  int64 total = 4;      // Total bytes to download
   int64 downloaded = 5; // Bytes downloaded
   bytes data = 6;
   string message = 7;

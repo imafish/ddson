@@ -7,15 +7,14 @@ import (
 )
 
 type clientInfo struct {
-	name      string
-	version   string
-	state     pb.ClientState
-	lastSeen  time.Time
-	stream    pb.DDSONService_RegisterServer
-	connected bool
+	name     string
+	version  string
+	state    pb.ClientState
+	lastSeen time.Time
+	stream   pb.DDSONService_RegisterServer
+	done     chan bool
 }
 
 func (c *clientInfo) close() {
-	// Close the stream and mark the client as disconnected
-	c.connected = false
+	c.done <- true
 }

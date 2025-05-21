@@ -6,10 +6,8 @@ import (
 	"net/url"
 	"os"
 	"path"
-)
 
-const (
-	version = "1.0.0"
+	"internal/version"
 )
 
 var (
@@ -49,7 +47,7 @@ func main() {
 			*clientName = hostname
 		}
 
-		log.Printf("starting agent mode as '%s' (version: %s)", *clientName, version)
+		log.Printf("starting agent mode as '%s' (version: %s)", *clientName, version.VersionString)
 		log.Printf("server is: %s", *addr)
 
 		run_agent()

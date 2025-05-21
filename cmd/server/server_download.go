@@ -1,10 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"os"
-	"time"
 
 	"internal/pb"
 )
@@ -12,10 +12,19 @@ import (
 func (s *server) Download(req *pb.DownloadRequest, stream pb.DDSONService_DownloadServer) error {
 	log.Printf("Received download request: URL=%s, Version=%s", req.GetUrl(), req.GetVersion())
 
+	// the download request must be from a client in the list
+	// TODO: matching client with name is not accurate, improve later
+	_, exists := s.clients.getClientByName(req.GetName())
+	if !exists {
+		log.Printf("Client %s not found in the list", req.GetName())
+		err := fmt.Errorf("client %s not found in the list", req.GetName())
+		return err
+	}
+
 	// Send initial status as PENDING
 	err := stream.Send(&pb.DownloadStatus{
 		Status:   pb.DownloadStatusType_PENDING,
-		Progress: 2,
+		Progress: int32(s.taskList.size()),
 		Message:  "Download request is being processed",
 	})
 	if err != nil {
@@ -23,35 +32,45 @@ func (s *server) Download(req *pb.DownloadRequest, stream pb.DDSONService_Downlo
 		return err
 	}
 
-	for i := 0; i < 5; i++ {
-		log.Printf("Simulating processing...")
-		time.Sleep(1 * time.Second)
+	// Create a task and add it to task list
+	taskInfo := &taskInfo{
+		nameOfClient: req.GetName(),
+		downloadUrl:  req.GetUrl(),
+		state:        taskState_PENDING,
+		subTasks:     make([]subTaskInfo, 0),
+		checksum:     req.GetChecksum(),
+		stream:       stream,
+		done:         make(chan bool),
+	}
+	s.taskList.addTask(taskInfo)
+
+	// wait for the task to complete
+	<-taskInfo.done
+
+	completeFile, err := combine(taskInfo)
+	if err != nil {
+		log.Printf("Error combining files: %v", err)
+		return err
+	}
+
+	if taskInfo.checksum != "" {
 		err = stream.Send(&pb.DownloadStatus{
-			Status:     pb.DownloadStatusType_DOWNLOADING,
-			Downloaded: int64(i * 2000),
-			Total:      10000,
-			Speed:      2000,
+			Status:  pb.DownloadStatusType_VALIDATING,
+			Message: "Validating integrity...",
 		})
 		if err != nil {
-			log.Printf("Failed to send processing status: %v", err)
+			log.Printf("Failed to send validation status: %v", err)
+			return err
+		}
+		err = validateFile(completeFile, taskInfo.checksum)
+		if err != nil {
+			log.Printf("Error validating file: %v", err)
 			return err
 		}
 	}
 
-	// simuate validation
-	err = stream.Send(&pb.DownloadStatus{
-		Status:  pb.DownloadStatusType_VALIDATING,
-		Message: "Validating integrity...",
-	})
-	if err != nil {
-		log.Printf("Failed to send validation status: %v", err)
-		return err
-	}
-	// Simulate validation delay
-	time.Sleep(2 * time.Second)
-
 	// send file content
-	file, err := os.Open("/home/ubuntu/workspace_bazel_prefetcher/data/content_addressable/sha256/da762fc50ba1464a494a6581a848ee92661b1f390c211f4737d8d84210c986a7/file")
+	file, err := os.Open(completeFile)
 	if err != nil {
 		log.Printf("Error opening file: %v", err)
 		return err
@@ -68,23 +87,13 @@ func (s *server) Download(req *pb.DownloadRequest, stream pb.DDSONService_Downlo
 			return err
 		}
 		err = stream.Send(&pb.DownloadStatus{
-			Status: pb.DownloadStatusType_TRANSFERING,
+			Status: pb.DownloadStatusType_TRANSFERRING,
 			Data:   buffer[:n],
 		})
 		if err != nil {
 			log.Printf("Error sending file data: %v", err)
 			return err
 		}
-	}
-
-	// Send final status as COMPLETED
-	err = stream.Send(&pb.DownloadStatus{
-		Status:  pb.DownloadStatusType_COMPLETED,
-		Message: "Download completed successfully",
-	})
-	if err != nil {
-		log.Printf("Failed to send completed status: %v", err)
-		return err
 	}
 
 	log.Printf("Download completed: URL=%s", req.GetUrl())

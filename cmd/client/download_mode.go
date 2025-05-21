@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	"internal/pb"
+	"internal/version"
 )
 
 func download() {
@@ -24,7 +25,7 @@ func download() {
 
 	// Create a DownloadRequest
 	req := &pb.DownloadRequest{
-		Version:  version,
+		Version:  version.VersionString,
 		Url:      *downloadUrl,
 		Checksum: "",
 	}
@@ -59,7 +60,7 @@ func download() {
 		}
 
 		switch resp.GetStatus() {
-		case pb.DownloadStatusType_TRANSFERING:
+		case pb.DownloadStatusType_TRANSFERRING:
 			log.Printf("Start receiving data from server...")
 			// Write data to the file
 			if _, err := file.Write(resp.GetData()); err != nil {
@@ -70,8 +71,6 @@ func download() {
 
 		case pb.DownloadStatusType_PENDING:
 			log.Printf("Download is pending, number #%d in queue", resp.GetProgress())
-		case pb.DownloadStatusType_FAILED:
-			log.Fatalf("Server returned Error: %s", resp.GetMessage())
 		case pb.DownloadStatusType_DOWNLOADING:
 			log.Print(fmtProgress(resp))
 		case pb.DownloadStatusType_VALIDATING:

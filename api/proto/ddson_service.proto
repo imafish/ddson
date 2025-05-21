@@ -8,7 +8,7 @@ service DDSONService {
   rpc Register(RegisterRequest) returns (stream ServerMessage) {}
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse) {}
   rpc Download(DownloadRequest) returns (stream DownloadStatus) {}
-  rpc Upload(DownloadData) returns (ReceiveStatus) {}
+  rpc Upload(stream UploadData) returns (ReceiveStatus) {}
 }
 
 message RegisterRequest {
@@ -26,6 +26,8 @@ message ServerMessage {
   ServerMessageType type = 1;
   string message = 2;
   int64 timestamp = 3;
+  int64 offset = 4;
+  int64 size = 5;
 }
 
 enum ClientState {
@@ -68,7 +70,7 @@ message DownloadStatus {
   string message = 7;
 }
 
-message DownloadData {
+message UploadData {
   string url = 1;
   string checksum = 2;
   int64 offset = 3;

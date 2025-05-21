@@ -5,6 +5,7 @@ go 1.23.3
 replace internal/pb => ../../internal/pb
 
 require (
+	github.com/bgentry/go-netrc v0.0.0-20140422174119-9fd32a8b3d3d
 	google.golang.org/grpc v1.68.1
 	internal/pb v0.0.0
 )

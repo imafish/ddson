@@ -21,6 +21,7 @@ enum ServerMessageType {
   MESSAGE = 0;
   ERROR = 1;
   TASK = 2;
+  REGISTER_OK = 3;
 }
 
 message ServerMessage {
@@ -29,6 +30,8 @@ message ServerMessage {
   int64 timestamp = 3;
   int64 offset = 4;
   int64 size = 5;
+  int32 id = 6;
+  string url = 7;
 }
 
 enum ClientState {
@@ -39,6 +42,7 @@ enum ClientState {
 message HeartbeatRequest {
   string name = 1;
   ClientState state = 2;
+  int32 id = 3;
 }
 
 message HeartbeatResponse {
@@ -76,6 +80,8 @@ message UploadData {
   int64 offset = 3;
   int64 size = 4;
   bytes data = 5;
+  int32 client_id = 6;
+  int32 task_id = 7;
 }
 
 message ReceiveStatus {

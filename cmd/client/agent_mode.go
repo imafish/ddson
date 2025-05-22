@@ -82,6 +82,7 @@ func sendHeartbeats(quitChan chan bool, client pb.DDSONServiceClient) {
 			resp, err := client.Heartbeat(context.Background(), &pb.HeartbeatRequest{
 				Name:  *clientName,
 				State: clientState,
+				Id:    myId,
 			})
 			if err != nil {
 				errCount++
@@ -131,9 +132,15 @@ func handleIncomingMessages(stream pb.DDSONService_RegisterClient, quitChan chan
 		switch msg.Type {
 		case pb.ServerMessageType_MESSAGE:
 			log.Printf("Received message from server: %s (timestamp: %d)", msg.Message, msg.Timestamp)
+
 		case pb.ServerMessageType_ERROR:
 			log.Printf("Error from server: %s", msg.Message)
 			return
+
+		case pb.ServerMessageType_REGISTER_OK:
+			log.Printf("Registration successful, client ID: %d", msg.Id)
+			myId = msg.Id
+
 		case pb.ServerMessageType_TASK:
 			log.Printf("Task from server: %s (timestamp: %d)", msg.Message, msg.Timestamp)
 			if clientState != pb.ClientState_IDLE {
@@ -141,18 +148,20 @@ func handleIncomingMessages(stream pb.DDSONService_RegisterClient, quitChan chan
 				// TODO: send error message to server
 			} else {
 				clientState = pb.ClientState_BUSY
-				err = runTask(client, msg.GetMessage(), msg.GetOffset(), msg.GetSize())
+				err = runTask(client, msg)
+				clientState = pb.ClientState_IDLE
 				if err != nil {
+					// TODO: send error message to server
 					log.Printf("Failed to run task: %v", err)
 				}
-				clientState = pb.ClientState_IDLE
 			}
 		}
 	}
 }
 
-func runTask(client pb.DDSONServiceClient, url string, offset int64, size int64) error {
-	log.Printf("Running task: URL: %s (offset: %d, size: %d)", url, offset, size)
+func runTask(client pb.DDSONServiceClient, msg *pb.ServerMessage) error {
+	url, offset, size, id := msg.Url, msg.Offset, msg.Size, msg.Id
+	log.Printf("Running task #%d: URL: %s (offset: %d, size: %d)", id, url, offset, size)
 
 	// Parse .netrc file for credentials
 	username, password, err := getDataFromNetrc(url)
@@ -211,6 +220,7 @@ func runTask(client pb.DDSONServiceClient, url string, offset int64, size int64)
 
 		err = stream.Send(&pb.UploadData{
 			Url:    url,
+			Id:     id,
 			Offset: offset,
 			Size:   chunkSize,
 			Data:   buffer[:chunkSize],
@@ -234,8 +244,8 @@ func runTask(client pb.DDSONServiceClient, url string, offset int64, size int64)
 
 	if !respStatus.Success {
 		log.Printf("Upload failed: %s", respStatus.Message)
-		// TODO: retry?
-		return fmt.Errorf("upload failed: %s", respStatus.Message)
+		// TODO: retry, ignore?
+		return nil
 	}
 
 	log.Printf("Upload completed successfully")

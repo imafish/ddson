@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"internal/pb"
 	"log"
 	"time"
@@ -9,12 +10,18 @@ import (
 
 func (s *server) Heartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*pb.HeartbeatResponse, error) {
 	log.Printf("Received heartbeat from client %s (state: %v)", req.Name, req.State)
-	client, exists := s.clients.getClientByName(req.Name)
-
+	client, exists := s.clients.getClientById(req.Id)
 	if !exists {
 		return &pb.HeartbeatResponse{
 			Success: false,
-			Message: "client not registered",
+			Message: fmt.Sprintf("client #%d not registered", req.Id),
+		}, nil
+	}
+
+	if client.name != req.Name {
+		return &pb.HeartbeatResponse{
+			Success: false,
+			Message: fmt.Sprintf("client name mismatch: expected %s, got %s", client.name, req.Name),
 		}, nil
 	}
 

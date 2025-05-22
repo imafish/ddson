@@ -15,6 +15,15 @@ type server struct {
 	pb.UnimplementedDDSONServiceServer
 	clients  *clientList
 	taskList *taskList
+	freeId   int32
+}
+
+func newServer() *server {
+	return &server{
+		clients:  newClientList(),
+		taskList: newTaskList(),
+		freeId:   0,
+	}
 }
 
 func main() {
@@ -32,10 +41,7 @@ func main() {
 		grpc.MaxSendMsgSize(100*1024*1024), // 100 MB
 	)
 
-	serverInstance := &server{
-		clients:  newClientList(),
-		taskList: newTaskList(),
-	}
+	serverInstance := newServer()
 	pb.RegisterDDSONServiceServer(s, serverInstance)
 
 	// Start client monitoring goroutine

@@ -15,6 +15,7 @@ var (
 	clientName  = flag.String("name", "", "the name of the client")
 	downloadUrl = flag.String("url", "", "URL to download from")
 	output      = flag.String("output", "", "output file name")
+	myId        int32
 )
 
 func main() {

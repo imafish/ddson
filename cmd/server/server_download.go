@@ -33,50 +33,31 @@ func (s *server) Download(req *pb.DownloadRequest, stream pb.DDSONService_Downlo
 	}
 
 	// Create a task and add it to task list
-	taskInfo := &taskInfo{
-		nameOfClient: req.GetName(),
-		downloadUrl:  req.GetUrl(),
-		state:        taskState_PENDING,
-		subTasks:     make([]subTaskInfo, 0),
-		checksum:     req.GetChecksum(),
-		stream:       stream,
-		done:         make(chan bool),
-	}
+	taskInfo := newTaskInfo(req.GetName(), req.GetUrl(), req.GetChecksum(), stream)
 	s.taskList.addTask(taskInfo)
 
 	// wait for the task to complete
 	<-taskInfo.done
 
-	completeFile, err := combine(taskInfo)
-	if err != nil {
-		log.Printf("Error combining files: %v", err)
-		return err
-	}
-
-	if taskInfo.checksum != "" {
-		err = stream.Send(&pb.DownloadStatus{
-			Status:  pb.DownloadStatusType_VALIDATING,
-			Message: "Validating integrity...",
-		})
-		if err != nil {
-			log.Printf("Failed to send validation status: %v", err)
-			return err
-		}
-		err = validateFile(completeFile, taskInfo.checksum)
-		if err != nil {
-			log.Printf("Error validating file: %v", err)
-			return err
-		}
-	}
-
 	// send file content
-	file, err := os.Open(completeFile)
+	if taskInfo.err != nil {
+		log.Printf("Error in task: %v", taskInfo.err)
+		return taskInfo.err
+	}
+	if taskInfo.completeFilePath == "" {
+		log.Printf("No file to send for task %s", taskInfo.nameOfClient)
+		return fmt.Errorf("no file to send for task %s", taskInfo.nameOfClient)
+	}
+
+	file, err := os.Open(taskInfo.completeFilePath)
 	if err != nil {
 		log.Printf("Error opening file: %v", err)
 		return err
 	}
-	buffer := make([]byte, 1024*1024) // 1 MB buffer
+	defer file.Close()
+	defer os.Remove(taskInfo.completeFilePath) // Clean up after sending
 
+	buffer := make([]byte, 1024*1024) // 1 MB buffer
 	for {
 		n, err := file.Read(buffer)
 		if err != nil {

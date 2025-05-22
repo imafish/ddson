@@ -25,44 +25,20 @@ func (s *server) Register(req *pb.RegisterRequest, stream pb.DDSONService_Regist
 	}
 
 	// Create new client
-	s.clients.addClient(req.Name, req.Version, stream)
-	client, _ := s.clients.getClientByName(req.Name)
+	client := s.clients.addClient(req.Name, req.Version, stream, s.freeId)
+	s.freeId++
 
 	log.Printf("Client registered: %s (version: %s)", req.Name, req.Version)
-
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-
-	// Keep the connection open
-	for {
-		select {
-		case <-stream.Context().Done():
-			log.Printf("Client %s disconnected, removing from client list", req.Name)
-			s.clients.removeClient(req.Name)
-			return nil
-
-		case <-client.done:
-			log.Printf("client %s is marked closed, exit loop", req.Name)
-			return nil
-
-		case <-ticker.C:
-			log.Printf("Sending message to client %s", req.Name)
-			connectedClients := make([]string, 0)
-			s.clients.mtx.Lock()
-			for name := range s.clients.clients {
-				connectedClients = append(connectedClients, name)
-			}
-			s.clients.mtx.Unlock()
-			msg := &pb.ServerMessage{
-				Type:      pb.ServerMessageType_MESSAGE,
-				Message:   fmt.Sprintf("Connected clients: %v", connectedClients),
-				Timestamp: time.Now().Unix(),
-			}
-			if err := stream.Send(msg); err != nil {
-				log.Printf("Failed to send message to %s: %v", req.Name, err)
-				s.clients.removeClient(req.Name)
-				return err
-			}
-		}
+	err = stream.Send(&pb.ServerMessage{
+		Type:      pb.ServerMessageType_REGISTER_OK,
+		Timestamp: time.Now().Unix(),
+		Message:   fmt.Sprintf("Registration successful, client ID: %d", client.id),
+		Id:        client.id,
+	})
+	if err != nil {
+		log.Printf("Failed to send registration response: %v", err)
+		return err
 	}
+
+	return client.handleRegistration(req, stream, s)
 }

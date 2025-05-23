@@ -43,9 +43,9 @@ func (s *server) monitorClients() {
 
 		s.clients.mtx.Lock()
 		for id, client := range s.clients.clients {
-			if now.Sub(client.lastSeen) > 30*time.Second {
+			if now.Sub(client.lastSeen) > 20*time.Second {
 				log.Printf("Client %d heartbeat timeout, removing", id)
-				s.clients.removeAndCloseClient(id)
+				s.clients.removeAndCloseClientNoLock(id)
 			}
 		}
 		log.Printf("Finished checking dead clients.")

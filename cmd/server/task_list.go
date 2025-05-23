@@ -4,7 +4,6 @@ import (
 	"internal/pb"
 	"log"
 	"sync"
-	"time"
 )
 
 type subTaskInfo struct {
@@ -64,20 +63,7 @@ func (t *taskList) size() int {
 	return len(t.tasks)
 }
 
-func (t *taskList) notify() {
-	// TODO: notify all pending tasks current state
-	log.Printf("TODO: notify all pending tasks current state")
-}
-
 func (t *taskList) run(server *server) error {
-	go func() {
-		ticker := time.NewTicker(20 * time.Second)
-		defer ticker.Stop()
-		for range ticker.C {
-			t.notify()
-		}
-	}()
-
 	for {
 		t.mtx.Lock()
 		for len(t.tasks) == 0 {

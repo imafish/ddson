@@ -59,6 +59,10 @@ func (c *clientList) getClientById(id int) (*clientInfo, bool) {
 func (c *clientList) removeAndCloseClient(id int) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
+	c.removeAndCloseClientNoLock(id)
+}
+
+func (c *clientList) removeAndCloseClientNoLock(id int) {
 	if client, exists := c.clients[id]; exists {
 		client.close()
 		delete(c.clients, id)

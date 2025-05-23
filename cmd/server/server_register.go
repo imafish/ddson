@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 
 	"internal/pb"
 	"internal/version"
@@ -34,6 +35,8 @@ func (s *server) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.Reg
 		return nil, fmt.Errorf("failed to get client address")
 	}
 	clientAddr := p.Addr.String()
+	// get client address without port
+	clientAddr = clientAddr[:len(clientAddr)-len(fmt.Sprintf(":%d", p.Addr.(*net.TCPAddr).Port))]
 	clientPort := int(req.Port)
 
 	log.Printf("Client %s (%s:%d) is registering with version %s", req.Name, clientAddr, clientPort, req.Version)

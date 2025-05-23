@@ -14,12 +14,14 @@ func (s *server) Download(req *pb.DownloadRequest, stream pb.DDSONService_Downlo
 
 	// the download request must be from a client in the list
 	// TODO: matching client with name is not accurate, improve later
-	client, exists := s.clients.getClientById(int(req.GetClientId()))
-	if !exists {
-		log.Printf("Client #%d not found in the list", req.GetClientId())
-		err := fmt.Errorf("client #%d not found in the list", req.GetClientId())
-		return err
-	}
+	log.Printf("NOT checking client id for now. implement later")
+	clientId := 0
+	// _, exists := s.clients.getClientById(int(req.GetClientId()))
+	// if !exists {
+	// 	log.Printf("Client #%d not found in the list", req.GetClientId())
+	// 	err := fmt.Errorf("client #%d not found in the list", req.GetClientId())
+	// 	return err
+	// }
 
 	// Send initial status as PENDING
 	err := stream.Send(&pb.DownloadStatus{
@@ -33,7 +35,7 @@ func (s *server) Download(req *pb.DownloadRequest, stream pb.DDSONService_Downlo
 	}
 
 	// Create a task and add it to task list
-	taskInfo := s.taskList.addTask(req.GetUrl(), req.GetChecksum(), stream, int(client.id))
+	taskInfo := s.taskList.addTask(req.GetUrl(), req.GetChecksum(), stream, clientId)
 
 	// wait for the task to complete
 	// TODO: periodically update the status (using select?)
@@ -57,7 +59,16 @@ func (s *server) Download(req *pb.DownloadRequest, stream pb.DDSONService_Downlo
 	defer file.Close()
 	defer os.Remove(taskInfo.completeFilePath) // Clean up after sending
 
+	fileStat, err := file.Stat()
+	if err != nil {
+		log.Printf("Error getting file info: %v", err)
+		return err
+	}
+	fileSize := fileStat.Size()
+
+	log.Printf("Sending file: %s, size=%d", taskInfo.completeFilePath, fileSize)
 	buffer := make([]byte, 1024*1024) // 1 MB buffer
+	totalBytesSent := 0
 	for {
 		n, err := file.Read(buffer)
 		if err != nil {
@@ -67,6 +78,7 @@ func (s *server) Download(req *pb.DownloadRequest, stream pb.DDSONService_Downlo
 			log.Printf("Error reading file: %v", err)
 			return err
 		}
+		log.Printf("Sending %d bytes, total sent: %d", n, totalBytesSent)
 		err = stream.Send(&pb.DownloadStatus{
 			Status: pb.DownloadStatusType_TRANSFERRING,
 			Data:   buffer[:n],

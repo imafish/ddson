@@ -17,10 +17,8 @@ type clientInfo struct {
 	lastSeen    time.Time
 	runningTask *taskInfo
 
-	taskChan     chan *subTaskInfo         // used to receive subtasks
-	taskDoneChan chan error                // used to signal task completion
-	messageChan  chan *pb.HeartbeatRequest // used to send task progress
-	quitChan     chan bool                 // used to signal threads to quit
+	messageChan chan int  // used to send task progress // TODO: change to a more specific type
+	quitChan    chan bool // used to signal threads to quit
 }
 
 func newClientInfo(name string, id int, version string, addr string, port int) *clientInfo {
@@ -35,10 +33,8 @@ func newClientInfo(name string, id int, version string, addr string, port int) *
 		lastSeen:    time.Now(),
 		runningTask: nil,
 
-		taskChan:     make(chan *subTaskInfo, 2),
-		taskDoneChan: make(chan error, 2),
-		messageChan:  make(chan *pb.HeartbeatRequest, 2),
-		quitChan:     make(chan bool, 2),
+		messageChan: make(chan int, 2),
+		quitChan:    make(chan bool, 2),
 	}
 }
 

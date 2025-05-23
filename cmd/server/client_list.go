@@ -96,4 +96,5 @@ func (c *clientList) releaseClient(client *clientInfo) {
 	defer c.mtx.Unlock()
 
 	client.state = pb.ClientState_IDLE
+	client.runningTask = nil
 }

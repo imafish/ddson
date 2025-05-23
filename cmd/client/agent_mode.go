@@ -16,10 +16,6 @@ import (
 	"internal/version"
 )
 
-var (
-	quit bool = false
-)
-
 type client struct {
 	pb.UnimplementedDDSONServiceClientServer
 	id    int32
@@ -33,7 +29,7 @@ func newClient() *client {
 	}
 }
 
-func run_agent() {
+func runAgent() {
 	// start grpc server and heartbeat thread
 	listenAddr := fmt.Sprintf(":%d", *servicePort)
 
@@ -107,7 +103,7 @@ func sendHeartbeats(client pb.DDSONServiceClient, id int32) {
 	defer ticker.Stop()
 	errCount := 0
 
-	for !quit {
+	for {
 		<-ticker.C
 
 		log.Printf("Sending heartbeat to server...")
@@ -131,7 +127,6 @@ func sendHeartbeats(client pb.DDSONServiceClient, id int32) {
 
 		if errCount > 3 {
 			log.Printf("Too many errors, disconnecting...")
-			quit = true
 			return
 		}
 	}

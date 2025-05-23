@@ -29,13 +29,6 @@ func download() {
 		Checksum: "",
 	}
 
-	// Open the output file
-	file, err := os.Create(*output)
-	if err != nil {
-		log.Fatalf("failed to create output file: %v", err)
-	}
-	defer file.Close()
-
 	// Send the request and receive the stream
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -45,11 +38,23 @@ func download() {
 		log.Fatalf("failed to start download: %v", err)
 	}
 
-	var received int64
+	// Open the output file
+	var file *os.File = nil
+	var received int64 = 0
 
 	// Process the responses from the server
 	for {
 		resp, err := stream.Recv()
+
+		// create file after receiving the first response
+		if file == nil && (err == nil || err.Error() == "EOF") {
+			file, err = os.Create(*output)
+			if err != nil {
+				log.Fatalf("failed to create output file: %v", err)
+			}
+			defer file.Close()
+		}
+
 		if err != nil {
 			if err.Error() == "EOF" {
 				log.Println("Download completed")

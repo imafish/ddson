@@ -62,6 +62,7 @@ func (t *taskInfo) setError(err error) {
 	t.err = err
 	t.state = taskState_FAILED
 	t.cond.Broadcast() // Notify any waiting goroutines
+	close(t.done)
 }
 
 // setState sets the state of the task and notifies any waiting goroutines

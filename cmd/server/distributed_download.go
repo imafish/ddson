@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -11,10 +12,12 @@ import (
 	"os"
 	"sort"
 	"strconv"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func executeTask(task *taskInfo, server *server) {
-
 	defer task.markDone()
 
 	// Check if server supports partial downloads
@@ -56,7 +59,8 @@ func executeTask(task *taskInfo, server *server) {
 		task.pendingSubTasks = append(task.pendingSubTasks, subTask)
 	}
 
-	log.Printf("Created %d sub tasks for task %d", len(task.pendingSubTasks), task.id)
+	totalSubTasks := len(task.pendingSubTasks)
+	log.Printf("Created %d sub tasks for task %d", totalSubTasks, task.id)
 
 	// Start downloading each sub task
 	task.mtx.Lock()
@@ -72,10 +76,8 @@ func executeTask(task *taskInfo, server *server) {
 
 		go func() {
 			defer server.clients.releaseClient(client)
+			defer task.cond.Broadcast()
 			client.runningTask = task
-			defer func() {
-				client.runningTask = nil
-			}()
 
 			task.mtx.Lock()
 			subTask.state = taskState_DOWNLOADING
@@ -107,6 +109,21 @@ func executeTask(task *taskInfo, server *server) {
 		}()
 	}
 
+	// Wait for all sub tasks to complete
+	task.mtx.Lock()
+	for len(task.completedSubTasks) < totalSubTasks && task.err == nil {
+		task.cond.Wait()
+	}
+	if task.err != nil {
+		// don't need to continue if there is an error
+		log.Printf("Error in task: %v", task.err)
+		task.mtx.Unlock()
+		return
+	}
+	// from now on, this lock is only used here.
+	defer task.mtx.Unlock()
+
+	log.Printf("combining %d sub tasks for task %d", totalSubTasks, task.id)
 	completeFile, err := combine(task)
 	if err != nil {
 		log.Printf("Error combining files: %v", err)
@@ -130,6 +147,8 @@ func executeTask(task *taskInfo, server *server) {
 			task.setError(err)
 			return
 		}
+	} else {
+		log.Printf("No checksum provided, skipping validation")
 	}
 
 	task.state = taskState_COMPLETED
@@ -137,24 +156,78 @@ func executeTask(task *taskInfo, server *server) {
 }
 
 func downloadChunk(subTask *subTaskInfo, client *clientInfo) error {
-	client.taskChan <- subTask
+	downloadUrl, offset, downloadSize := subTask.downloadUrl, subTask.offset, subTask.downloadSize
+	log.Printf("Downloading chunk from %s, offset: %d, size: %d, client: #%d", downloadUrl, offset, downloadSize, client.id)
 
-	// Wait for the client to finish downloading
-	for {
-		select {
-		case msg := <-client.messageChan:
-			// TODO: gather the progress and update the sub task state
-			log.Printf("Client %d reported progress for subtask %d: %s", client.id, 7777, msg.GetName())
+	// TODO: don't initialize a grpc client for each download
 
-		case err := <-client.taskDoneChan:
-			if err != nil {
-				log.Printf("Error downloading chunk: %v", err)
-				return err
-			}
-			log.Printf("Client %d finished downloading subtask %d", client.id, subTask.id)
-			return nil
-		}
+	// Create a grpc request to the client to ask for the download
+	clientAddr := fmt.Sprintf("%s:%d", client.addr, client.port)
+	log.Printf("Connecting to client %d at %s", client.id, clientAddr)
+	// Establish a connection to the server
+	conn, err := grpc.NewClient(clientAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Fatalf("failed to connect to server: %v", err)
 	}
+	defer conn.Close()
+
+	grpcClient := pb.NewDDSONServiceClientClient(conn)
+	if err != nil {
+		log.Printf("Error creating gRPC client: %v", err)
+		return err
+	}
+	// Send the request to the client
+	stream, err := grpcClient.DownloadPart(context.Background(), &pb.DownloadPartRequest{
+		Url:    downloadUrl,
+		Offset: offset,
+		Size:   downloadSize,
+	})
+	if err != nil {
+		log.Printf("Error sending download request: %v", err)
+		return err
+	}
+	defer stream.CloseSend()
+	// Read the response from the client
+	targetFile := subTask.targetFile
+	file, err := os.Create(targetFile)
+	if err != nil {
+		log.Printf("Error creating file: %v", err)
+		return err
+	}
+	defer file.Close()
+
+	// Read the data from the stream and write it to the file
+	log.Printf("Receiving data for subtask #%d", subTask.id)
+	var received int64 = 0
+	for {
+		resp, err := stream.Recv()
+		if err == io.EOF {
+			log.Printf("Download completed for subtask #%d", subTask.id)
+			break
+		}
+		if err != nil {
+			log.Printf("Error receiving data: %v", err)
+			return err
+		}
+		if resp.GetStatus() != pb.DownloadStatusType_TRANSFERRING {
+			// TODO: handle other statuses
+			log.Printf("Unexpected status: %s", resp.GetStatus())
+			return fmt.Errorf("unexpected status: %s", resp.GetStatus())
+		}
+		// Write the data to the file
+		n, err := file.Write(resp.GetData())
+		if err != nil {
+			log.Printf("Error writing to file: %v", err)
+			return err
+		}
+		received += int64(n)
+	}
+	if received != downloadSize {
+		log.Printf("Error: received %d bytes, expected %d bytes", received, downloadSize)
+		return fmt.Errorf("received %d bytes, expected %d bytes", received, downloadSize)
+	}
+	log.Printf("Download completed for subtask #%d, saved to %s", subTask.id, targetFile)
+	return nil
 }
 
 func combine(task *taskInfo) (string, error) {

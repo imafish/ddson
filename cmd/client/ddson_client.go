@@ -52,6 +52,6 @@ func main() {
 		log.Printf("starting agent mode as '%s' (version: %s)", *clientName, version.VersionString)
 		log.Printf("server is: %s", *addr)
 
-		run_agent()
+		runAgent()
 	}
 }

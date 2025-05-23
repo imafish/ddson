@@ -36,6 +36,7 @@ func (c *client) DownloadPart(grpcRequest *pb.DownloadPartRequest, stream pb.DDS
 	}
 
 	// Perform the HTTP request
+	log.Printf("Sending request to URL: %s", url)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Printf("Failed to download file: %v", err)
@@ -49,6 +50,7 @@ func (c *client) DownloadPart(grpcRequest *pb.DownloadPartRequest, stream pb.DDS
 	}
 
 	// Read the response body into a buffer
+	// TODO: later, directly copy the http.Response.Body to the calling client (don't wait for download to complete)
 	buffer := make([]byte, size)
 	n, err := io.ReadFull(resp.Body, buffer)
 	if err != nil && err != io.EOF {

@@ -9,8 +9,8 @@ import (
 )
 
 func (s *server) Heartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*pb.HeartbeatResponse, error) {
-	log.Printf("Received heartbeat from client %s (state: %v)", req.Name, req.State)
-	client, exists := s.clients.getClientById(req.Id)
+	log.Printf("Received heartbeat from client %s, id: %d", req.Name, req.Id)
+	client, exists := s.clients.getClientById(int(req.Id))
 	if !exists {
 		return &pb.HeartbeatResponse{
 			Success: false,
@@ -26,9 +26,7 @@ func (s *server) Heartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*pb.H
 	}
 
 	client.lastSeen = time.Now()
-	client.state = req.State
 
-	log.Printf("Updated client %s state to %v", req.Name, req.State)
 	return &pb.HeartbeatResponse{
 		Success: true,
 		Message: "heartbeat received",
@@ -44,11 +42,10 @@ func (s *server) monitorClients() {
 		now := time.Now()
 
 		s.clients.mtx.Lock()
-		for name, client := range s.clients.clients {
+		for id, client := range s.clients.clients {
 			if now.Sub(client.lastSeen) > 30*time.Second {
-				log.Printf("Client %s heartbeat timeout, removing", name)
-				delete(s.clients.clients, name)
-				client.close()
+				log.Printf("Client %d heartbeat timeout, removing", id)
+				s.clients.removeAndCloseClient(id)
 			}
 		}
 		log.Printf("Finished checking dead clients.")

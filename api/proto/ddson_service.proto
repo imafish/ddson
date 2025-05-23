@@ -5,33 +5,26 @@ package ddson;
 option go_package = "./internal/pb";
 
 service DDSONService {
-  rpc Register(RegisterRequest) returns (stream ServerMessage) {}
+  rpc Register(RegisterRequest) returns (RegisterResponse) {}
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse) {}
-  rpc Upload(stream UploadData) returns (ReceiveStatus) {}
-
   rpc Download(DownloadRequest) returns (stream DownloadStatus) {}
+}
+
+service DDSONServiceClient {
+  rpc DownloadPart(DownloadPartRequest) returns (stream DownloadStatus) {}
 }
 
 message RegisterRequest {
   string name = 1;
   string version = 2;
+  int32 port = 3;
 }
 
-enum ServerMessageType {
-  MESSAGE = 0;
-  ERROR = 1;
-  TASK = 2;
-  REGISTER_OK = 3;
-}
-
-message ServerMessage {
-  ServerMessageType type = 1;
+message RegisterResponse {
+  bool success = 1;
   string message = 2;
-  int64 timestamp = 3;
-  int64 offset = 4;
-  int64 size = 5;
-  int32 id = 6;
-  string url = 7;
+  int32 id = 3;
+  string server_version = 4;
 }
 
 enum ClientState {
@@ -41,7 +34,6 @@ enum ClientState {
 
 message HeartbeatRequest {
   string name = 1;
-  ClientState state = 2;
   int32 id = 3;
 }
 
@@ -51,10 +43,19 @@ message HeartbeatResponse {
 }
 
 message DownloadRequest {
-  string version = 1;
   string url = 2;
   string checksum = 3;
-  string name = 4;
+  int32 client_id = 5; // TODO: this is ignored for now. later we will use it to identify the client
+}
+
+message DownloadPartRequest {
+  string url = 1;
+  string version = 2;
+  int64 offset = 3;
+  int64 size = 4;
+  int32 client_id = 5;
+  int32 subtask_id = 6;
+  int32 task_id = 7;
 }
 
 enum DownloadStatusType {
@@ -70,21 +71,10 @@ message DownloadStatus {
   int32 speed = 3;      // Bytes per second
   int64 total = 4;      // Total bytes to download
   int64 downloaded = 5; // Bytes downloaded
+
   bytes data = 6;
   string message = 7;
-}
 
-message UploadData {
-  string url = 1;
-  string checksum = 2;
-  int64 offset = 3;
-  int64 size = 4;
-  bytes data = 5;
-  int32 client_id = 6;
-  int32 task_id = 7;
-}
-
-message ReceiveStatus {
-  bool success = 1;
-  string message = 2;
+  int32 total_parts = 8;
+  int32 downloading_part = 9;
 }

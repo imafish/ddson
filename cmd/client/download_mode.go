@@ -10,7 +10,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	"internal/pb"
-	"internal/version"
 )
 
 func download() {
@@ -25,7 +24,7 @@ func download() {
 
 	// Create a DownloadRequest
 	req := &pb.DownloadRequest{
-		Version:  version.VersionString,
+		ClientId: int32(0), // TODO: currently client id is ignored. later will be used to identify the client
 		Url:      *downloadUrl,
 		Checksum: "",
 	}

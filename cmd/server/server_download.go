@@ -10,14 +10,14 @@ import (
 )
 
 func (s *server) Download(req *pb.DownloadRequest, stream pb.DDSONService_DownloadServer) error {
-	log.Printf("Received download request: URL=%s, Version=%s", req.GetUrl(), req.GetVersion())
+	log.Printf("Received download request: URL=%s, id=%d", req.GetUrl(), req.GetClientId())
 
 	// the download request must be from a client in the list
 	// TODO: matching client with name is not accurate, improve later
-	_, exists := s.clients.getClientByName(req.GetName())
+	client, exists := s.clients.getClientById(int(req.GetClientId()))
 	if !exists {
-		log.Printf("Client %s not found in the list", req.GetName())
-		err := fmt.Errorf("client %s not found in the list", req.GetName())
+		log.Printf("Client #%d not found in the list", req.GetClientId())
+		err := fmt.Errorf("client #%d not found in the list", req.GetClientId())
 		return err
 	}
 
@@ -33,10 +33,10 @@ func (s *server) Download(req *pb.DownloadRequest, stream pb.DDSONService_Downlo
 	}
 
 	// Create a task and add it to task list
-	taskInfo := newTaskInfo(req.GetName(), req.GetUrl(), req.GetChecksum(), stream)
-	s.taskList.addTask(taskInfo)
+	taskInfo := s.taskList.addTask(req.GetUrl(), req.GetChecksum(), stream, int(client.id))
 
 	// wait for the task to complete
+	// TODO: periodically update the status (using select?)
 	<-taskInfo.done
 
 	// send file content
@@ -45,8 +45,8 @@ func (s *server) Download(req *pb.DownloadRequest, stream pb.DDSONService_Downlo
 		return taskInfo.err
 	}
 	if taskInfo.completeFilePath == "" {
-		log.Printf("No file to send for task %s", taskInfo.nameOfClient)
-		return fmt.Errorf("no file to send for task %s", taskInfo.nameOfClient)
+		log.Printf("No file to send for task %d", taskInfo.id)
+		return fmt.Errorf("no file to send for task %d", taskInfo.id)
 	}
 
 	file, err := os.Open(taskInfo.completeFilePath)

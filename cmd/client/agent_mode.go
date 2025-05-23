@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -13,24 +14,68 @@ import (
 	"github.com/bgentry/go-netrc/netrc" // Third-party library
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 
 	"internal/pb"
 	"internal/version"
 )
 
-var clientState pb.ClientState = pb.ClientState_IDLE
+var (
+	quit bool = false
+)
+
+type client struct {
+	pb.UnimplementedDDSONServiceClientServer
+	id    int32
+	state pb.ClientState
+}
+
+func newClient() *client {
+	return &client{
+		id:    0,
+		state: pb.ClientState_IDLE,
+	}
+}
 
 func run_agent() {
-	for {
-		quitChan := make(chan bool, 2)
-		agent(quitChan)
+	// start grpc server and heartbeat thread
+
+	lis, err := net.Listen("tcp", ":5510")
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+
+	s := grpc.NewServer(
+		grpc.KeepaliveParams(keepalive.ServerParameters{
+			Time:    10 * time.Second,
+			Timeout: 20 * time.Second,
+		}),
+		grpc.MaxRecvMsgSize(100*1024*1024),
+		grpc.MaxSendMsgSize(100*1024*1024), // 100 MB
+	)
+	client := newClient()
+	pb.RegisterDDSONServiceClientServer(s, client)
+
+	// heartbeat thread
+	go sendHeartBeatsToServer(&client.id)
+
+	log.Printf("Client agent listening at %v", lis.Addr())
+	if err := s.Serve(lis); err != nil {
+		log.Fatalf("failed to serve: %v", err)
+	}
+}
+
+func sendHeartBeatsToServer(id *int32) {
+	for !quit {
+		agent(id)
 
 		log.Printf("Agent stopped, restarting in 5 seconds...")
 		time.Sleep(5 * time.Second)
 	}
+	log.Printf("quit message received, stopping heartbeat")
 }
 
-func agent(quitChan chan bool) {
+func agent(id *int32) {
 	log.Printf("Connecting to %s...", *addr)
 	conn, err := grpc.NewClient(*addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -45,123 +90,25 @@ func agent(quitChan chan bool) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	defer func() {
-		quitChan <- true
-	}()
-
-	registerStream, err := client.Register(ctx, &pb.RegisterRequest{
+	response, err := client.Register(ctx, &pb.RegisterRequest{
 		Name:    *clientName,
 		Version: version.VersionString,
+		Port:    int32(*servicePort),
 	})
 	if err != nil {
 		log.Printf("Register failed: %v", err)
 		return
 	}
 
-	log.Printf("Registered as %s (version: %s)", *clientName, version.VersionString)
+	*id = response.Id
+	log.Printf("Registered, id: %d, server version: %s", response.Id, response.ServerVersion)
 
-	go sendHeartbeats(quitChan, client)
-
-	handleIncomingMessages(registerStream, quitChan, client)
+	go sendHeartbeats(client, *id)
 }
 
-func sendHeartbeats(quitChan chan bool, client pb.DDSONServiceClient) {
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-	errCount := 0
-
-	for {
-		select {
-		case <-quitChan:
-			log.Printf("quit message received, stopping heartbeat")
-			return
-
-		case <-ticker.C:
-			log.Printf("Sending heartbeat to server...")
-
-			resp, err := client.Heartbeat(context.Background(), &pb.HeartbeatRequest{
-				Name:  *clientName,
-				State: clientState,
-				Id:    myId,
-			})
-			if err != nil {
-				errCount++
-				log.Printf("Failed to send heartbeat, count: %d, error: %v", errCount, err)
-			} else if resp.Success {
-				log.Printf("Heartbeat sent (state: %v)", clientState)
-				errCount--
-			} else {
-				// resp.Success is false
-				log.Printf("Heartbeat rejected: count: %d, error: %s", errCount, resp.Message)
-				errCount++
-			}
-
-			if errCount > 3 {
-				log.Printf("Too many errors, disconnecting...")
-				quitChan <- true
-				return
-			}
-		}
-	}
-}
-
-func handleIncomingMessages(stream pb.DDSONService_RegisterClient, quitChan chan bool, client pb.DDSONServiceClient) {
-	defer func() {
-		quitChan <- true
-	}()
-
-	for {
-		select {
-		case <-quitChan:
-			log.Printf("quit message received, stopping message handling")
-			return
-		case <-stream.Context().Done():
-			log.Printf("Stream context done, stopping message handling")
-			return
-		default:
-			// Continue processing messages
-		}
-
-		msg, err := stream.Recv()
-		if err != nil {
-			log.Printf("Failed to receive message: %v", err)
-			return
-		}
-
-		log.Printf("Received from server: %s (timestamp: %d)", msg.Message, msg.Timestamp)
-		switch msg.Type {
-		case pb.ServerMessageType_MESSAGE:
-			log.Printf("Received message from server: %s (timestamp: %d)", msg.Message, msg.Timestamp)
-
-		case pb.ServerMessageType_ERROR:
-			log.Printf("Error from server: %s", msg.Message)
-			return
-
-		case pb.ServerMessageType_REGISTER_OK:
-			log.Printf("Registration successful, client ID: %d", msg.Id)
-			myId = msg.Id
-
-		case pb.ServerMessageType_TASK:
-			log.Printf("Task from server: %s (timestamp: %d)", msg.Message, msg.Timestamp)
-			if clientState != pb.ClientState_IDLE {
-				log.Printf("Client is busy, ignoring task")
-				// TODO: send error message to server
-			} else {
-				clientState = pb.ClientState_BUSY
-				err = runTask(client, msg)
-				clientState = pb.ClientState_IDLE
-				if err != nil {
-					// TODO: send error message to server
-					log.Printf("Failed to run task: %v", err)
-				}
-			}
-		}
-	}
-}
-
-func runTask(client pb.DDSONServiceClient, msg *pb.ServerMessage) error {
-	url, offset, size, id := msg.Url, msg.Offset, msg.Size, msg.Id
-	log.Printf("Running task #%d: URL: %s (offset: %d, size: %d)", id, url, offset, size)
+func (c *client) DownloadPart(grpcRequest *pb.DownloadPartRequest, stream pb.DDSONServiceClient_DownloadPartServer) error {
+	url, offset, size, clientId, taskId, subtaskId := grpcRequest.Url, grpcRequest.Offset, grpcRequest.Size, grpcRequest.ClientId, grpcRequest.TaskId, grpcRequest.SubtaskId
+	log.Printf("Received download request: URL=%s, Offset=%d, Size=%d, ClientId=%d, TaskId=%d, SubtaskId=%d", url, offset, size, clientId, taskId, subtaskId)
 
 	// Parse .netrc file for credentials
 	username, password, err := getDataFromNetrc(url)
@@ -202,54 +149,69 @@ func runTask(client pb.DDSONServiceClient, msg *pb.ServerMessage) error {
 		return err
 	}
 	log.Printf("Downloaded %d bytes from URL: %s", n, url)
-
-	// Upload the content to the server using the Upload RPC
-	stream, err := client.Upload(context.Background())
-	if err != nil {
-		log.Printf("Failed to start upload stream: %v", err)
-		return err
+	if int64(n) < size {
+		log.Printf("Read less data than expected: %d bytes", n)
+		return fmt.Errorf("read less data than expected: downloaded: %d, expected: %d", n, size)
 	}
 
-	log.Printf("Uploading %d bytes to server...", n)
+	i := 0
+	j := 0
 	for n > 0 {
 		// Send the data in chunks
-		chunkSize := int64(1024 * 1024) // 1 MB chunk size
-		if n < int(chunkSize) {
-			chunkSize = int64(n)
+		chunkSize := 1024 * 1024 // 1 MB chunk size
+		if n < chunkSize {
+			chunkSize = n
 		}
+		j = i + chunkSize
 
-		err = stream.Send(&pb.UploadData{
-			Url:    url,
-			Id:     id,
-			Offset: offset,
-			Size:   chunkSize,
-			Data:   buffer[:chunkSize],
+		log.Printf("Uploading [%d-%d) bytes to server...", i, j)
+		err = stream.Send(&pb.DownloadStatus{
+			Status: pb.DownloadStatusType_TRANSFERRING,
+			Data:   buffer[i:j],
 		})
 		if err != nil {
 			log.Printf("Failed to send upload data: %v", err)
 			return err
 		}
 
-		offset += chunkSize
-		n -= int(chunkSize)
+		n -= chunkSize
+		i += chunkSize
 	}
-	log.Printf("Sent completed.")
-
-	// Close the stream and receive the server's response
-	respStatus, err := stream.CloseAndRecv()
-	if err != nil {
-		log.Printf("Failed to complete upload: %v", err)
-		return err
-	}
-
-	if !respStatus.Success {
-		log.Printf("Upload failed: %s", respStatus.Message)
-		// TODO: retry, ignore?
-		return nil
-	}
-
-	log.Printf("Upload completed successfully")
+	log.Printf("Upload completed.")
 	return nil
+}
+
+func sendHeartbeats(client pb.DDSONServiceClient, id int32) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	errCount := 0
+
+	for !quit {
+		<-ticker.C
+
+		log.Printf("Sending heartbeat to server...")
+		resp, err := client.Heartbeat(context.Background(), &pb.HeartbeatRequest{
+			Name: *clientName,
+			Id:   id,
+		})
+		if err != nil {
+			errCount++
+			log.Printf("Failed to send heartbeat, count: %d, error: %v", errCount, err)
+		} else if resp.Success {
+			errCount--
+			log.Printf("Heartbeat successful: count: %d, message from server: %s", errCount, resp.Message)
+		} else {
+			// resp.Success is false
+			log.Printf("Heartbeat rejected: count: %d, message from server: %s", errCount, resp.Message)
+			errCount++
+		}
+
+		if errCount > 3 {
+			log.Printf("Too many errors, disconnecting...")
+			quit = true
+			return
+		}
+	}
 }
 
 func getDataFromNetrc(downloadUrl string) (string, string, error) {

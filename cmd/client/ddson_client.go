@@ -15,12 +15,13 @@ var (
 	clientName  = flag.String("name", "", "the name of the client")
 	downloadUrl = flag.String("url", "", "URL to download from")
 	output      = flag.String("output", "", "output file name")
-	myId        int32
+	servicePort = flag.Int("port", 5510, "the port to listen on")
 )
 
 func main() {
 	flag.Parse()
 
+	// TODO: include both mode in the same process
 	if *downloadUrl != "" {
 		// downloader mode
 		if *output == "" {
@@ -52,6 +53,5 @@ func main() {
 		log.Printf("server is: %s", *addr)
 
 		run_agent()
-
 	}
 }

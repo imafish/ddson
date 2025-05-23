@@ -27,7 +27,7 @@ func executeTask(task *taskInfo, server *server) {
 
 	if !supportsPartial {
 		log.Printf("Server does not support partial downloads, downloading the whole file")
-		err = fmt.Errorf("Server does not support partial downloads")
+		err = fmt.Errorf("server does not support partial downloads")
 		task.setError(err)
 		return
 	}
@@ -56,7 +56,7 @@ func executeTask(task *taskInfo, server *server) {
 		task.pendingSubTasks = append(task.pendingSubTasks, subTask)
 	}
 
-	log.Printf("Created %d sub tasks for task %s", len(task.pendingSubTasks), task.nameOfClient)
+	log.Printf("Created %d sub tasks for task %d", len(task.pendingSubTasks), task.id)
 
 	// Start downloading each sub task
 	task.mtx.Lock()
@@ -146,7 +146,7 @@ func downloadChunk(subTask *subTaskInfo, client *clientInfo) error {
 			// TODO: gather the progress and update the sub task state
 			log.Printf("Client %d reported progress for subtask %d: %s", client.id, 7777, msg.GetName())
 
-		case err := <-client.taskDone:
+		case err := <-client.taskDoneChan:
 			if err != nil {
 				log.Printf("Error downloading chunk: %v", err)
 				return err

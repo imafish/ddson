@@ -1,44 +1,48 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
-	"time"
 
 	"internal/pb"
 	"internal/version"
+
+	"google.golang.org/grpc/peer"
 )
 
-func (s *server) Register(req *pb.RegisterRequest, stream pb.DDSONService_RegisterServer) error {
+func (s *server) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) {
 
 	// check if version is compatible
 	clientVersion, err := version.VersionFromString(req.Version)
 	if err != nil {
-		return fmt.Errorf("invalid version format: %s", req.Version)
+		return nil, fmt.Errorf("invalid version format: %s", req.Version)
 	}
 	if !version.VersionCompatible(version.CurrentVersion(), clientVersion) {
-		return fmt.Errorf("version mismatch: server %s, client %s", version.CurrentVersion(), clientVersion)
+		return nil, fmt.Errorf("version mismatch: server %s, client %s", version.CurrentVersion(), clientVersion)
 	}
 	// Check if client already exists
 	if _, exists := s.clients.getClientByName(req.Name); exists {
-		return fmt.Errorf("client %s already registered", req.Name)
+		return nil, fmt.Errorf("client %s already registered", req.Name)
 	}
+
+	p, ok := peer.FromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("failed to get peer information")
+	}
+	if p.Addr == nil {
+		return nil, fmt.Errorf("failed to get client address")
+	}
+	clientAddr := p.Addr.String()
+	clientPort := int(req.Port)
+
+	log.Printf("Client %s (%s:%d) is registering with version %s", req.Name, clientAddr, clientPort, req.Version)
 
 	// Create new client
-	client := s.clients.addClient(req.Name, req.Version, stream, s.freeId)
-	s.freeId++
+	freeId := s.clients.addClient(req.Name, req.Version, clientAddr, clientPort)
 
-	log.Printf("Client registered: %s (version: %s)", req.Name, req.Version)
-	err = stream.Send(&pb.ServerMessage{
-		Type:      pb.ServerMessageType_REGISTER_OK,
-		Timestamp: time.Now().Unix(),
-		Message:   fmt.Sprintf("Registration successful, client ID: %d", client.id),
-		Id:        client.id,
-	})
-	if err != nil {
-		log.Printf("Failed to send registration response: %v", err)
-		return err
-	}
-
-	return client.handleRegistration(req, stream, s)
+	return &pb.RegisterResponse{
+		Id:            int32(freeId),
+		ServerVersion: version.CurrentVersion().String(),
+	}, nil
 }

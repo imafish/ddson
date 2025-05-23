@@ -15,14 +15,12 @@ type server struct {
 	pb.UnimplementedDDSONServiceServer
 	clients  *clientList
 	taskList *taskList
-	freeId   int32
 }
 
 func newServer() *server {
 	return &server{
 		clients:  newClientList(),
 		taskList: newTaskList(),
-		freeId:   0,
 	}
 }
 
@@ -47,8 +45,15 @@ func main() {
 	// Start client monitoring goroutine
 	go serverInstance.monitorClients()
 
+	// Start task processing goroutine
+	go serverInstance.runTasks()
+
 	log.Printf("Server listening at %v", lis.Addr())
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
+}
+
+func (s *server) runTasks() {
+	s.taskList.run(s)
 }

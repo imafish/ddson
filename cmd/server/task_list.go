@@ -1,72 +1,11 @@
 package main
 
 import (
+	"internal/pb"
 	"log"
 	"sync"
 	"time"
-
-	"internal/pb"
 )
-
-type taskState int
-
-const (
-	taskState_PENDING taskState = iota
-	taskState_DOWNLOADING
-	taskState_VALIDATING
-	taskState_TRANSFERRING
-	taskState_COMPLETED
-	taskState_FAILED
-)
-
-type taskInfo struct {
-	nameOfClient string
-	downloadUrl  string
-	checksum     string
-	stream       pb.DDSONService_DownloadServer
-
-	mtx               sync.Mutex // Mutex to protect access to the task states
-	cond              *sync.Cond
-	state             taskState
-	pendingSubTasks   []*subTaskInfo
-	completedSubTasks []*subTaskInfo
-	runningSubTasks   map[int32]*subTaskInfo
-
-	err              error
-	completeFilePath string
-	done             chan bool
-}
-
-func newTaskInfo(nameOfClient string, downloadUrl string, checksum string, stream pb.DDSONService_DownloadServer) *taskInfo {
-	return &taskInfo{
-		nameOfClient:      nameOfClient,
-		downloadUrl:       downloadUrl,
-		checksum:          checksum,
-		state:             taskState_PENDING,
-		stream:            stream,
-		mtx:               sync.Mutex{},
-		cond:              sync.NewCond(&sync.Mutex{}),
-		pendingSubTasks:   make([]*subTaskInfo, 0),
-		runningSubTasks:   make(map[int32]*subTaskInfo),
-		completedSubTasks: make([]*subTaskInfo, 0),
-		err:               nil,
-		completeFilePath:  "",
-		done:              make(chan bool),
-	}
-}
-
-// setError sets the error for the task and updates its state to FAILED, then notifies any waiting goroutines
-func (t *taskInfo) setError(err error) {
-	t.err = err
-	t.state = taskState_FAILED
-	t.cond.Broadcast() // Notify any waiting goroutines
-}
-
-// setState sets the state of the task and notifies any waiting goroutines
-func (t *taskInfo) markDone() {
-	t.cond.Broadcast()
-	close(t.done)
-}
 
 type subTaskInfo struct {
 	downloadUrl  string
@@ -91,23 +30,32 @@ func newSubTaskInfo(downloadUrl string, id int32, offset int64, downloadSize int
 }
 
 type taskList struct {
-	tasks []*taskInfo
-	mtx   sync.Mutex
-	cond  *sync.Cond
+	tasks  []*taskInfo
+	freeId int
+	mtx    *sync.Mutex
+	cond   *sync.Cond
 }
 
 func newTaskList() *taskList {
+	mtx := &sync.Mutex{}
 	return &taskList{
 		tasks: make([]*taskInfo, 0),
-		cond:  sync.NewCond(&sync.Mutex{}),
+		mtx:   mtx,
+		cond:  sync.NewCond(mtx),
 	}
 }
 
-func (t *taskList) addTask(task *taskInfo) {
+func (t *taskList) addTask(downloadUrl string, checksum string, stream pb.DDSONService_DownloadServer, idOfClient int) *taskInfo {
 	t.mtx.Lock()
-	defer t.mtx.Unlock()
+	newId := t.freeId
+	t.freeId++
+
+	task := newTaskInfo(downloadUrl, checksum, stream, newId, idOfClient)
 	t.tasks = append(t.tasks, task)
+	t.mtx.Unlock()
 	t.cond.Broadcast() // Notify any waiting goroutines
+
+	return task
 }
 
 func (t *taskList) size() int {
@@ -133,6 +81,7 @@ func (t *taskList) run(server *server) error {
 	for {
 		t.mtx.Lock()
 		for len(t.tasks) == 0 {
+			log.Printf("task list empty, waiting...")
 			t.cond.Wait() // Wait for tasks to be added
 		}
 
@@ -140,6 +89,8 @@ func (t *taskList) run(server *server) error {
 		task := t.tasks[0]
 		t.tasks = t.tasks[1:] // Remove the task from the list
 		t.mtx.Unlock()
+
+		log.Printf("Got a task to run. id: %d, from client: #%d, url: %s, checksum: %s", task.id, task.idOfClient, task.downloadUrl, task.checksum)
 
 		executeTask(task, server)
 	}

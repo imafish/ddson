@@ -23,3 +23,9 @@ go.work.sum
 
 # env file
 .env
+
+# generated files
+cmd/client/ddson_client
+cmd/server/ddson_server
+internal/pb/*.pb.go
+cmd/client/ddson_client_darwin_arm64

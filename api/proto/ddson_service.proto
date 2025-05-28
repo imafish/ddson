@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+package ddson;
+
+option go_package = "./internal/pb";
+
+service DDSONService {
+  rpc Register(RegisterRequest) returns (RegisterResponse) {}
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse) {}
+  rpc Download(DownloadRequest) returns (stream DownloadStatus) {}
+}
+
+service DDSONServiceClient {
+  rpc DownloadPart(DownloadPartRequest) returns (stream DownloadStatus) {}
+}
+
+message RegisterRequest {
+  string name = 1;
+  string version = 2;
+  int32 port = 3;
+}
+
+message RegisterResponse {
+  bool success = 1;
+  string message = 2;
+  int32 id = 3;
+  string server_version = 4;
+}
+
+enum ClientState {
+  IDLE = 0;
+  BUSY = 1;
+}
+
+message HeartbeatRequest {
+  string name = 1;
+  int32 id = 3;
+}
+
+message HeartbeatResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message DownloadRequest {
+  string url = 2;
+  string checksum = 3;
+  int32 client_id = 5; // TODO: this is ignored for now. later we will use it to
+                       // identify the client
+}
+
+message DownloadPartRequest {
+  string url = 1;
+  string version = 2;
+  int64 offset = 3;
+  int64 size = 4;
+  int32 client_id = 5;
+  int32 subtask_id = 6;
+}
+
+enum DownloadStatusType {
+  PENDING = 0;
+  DOWNLOADING = 1;
+  VALIDATING = 2;
+  TRANSFERRING = 3;
+}
+
+message DownloadStatus {
+  DownloadStatusType status = 1;
+  int32 clientCount = 2;          // Number of clients, PENDING,server -> client
+  int32 speed = 3;                // Bytes per second,
+                                  // agent -> server && server -> client
+  int64 downloadedBytes = 4;      // Bytes downloaded since last update,
+                                  // agent -> server
+  int64 totalDownloadedBytes = 5; // Bytes downloaded, server -> client
+  int32 numberInQueue = 7;        // Number in the queue,
+                                  // PENDING, server -> client
+
+  bytes data = 6;
+}

@@ -86,7 +86,7 @@ func (c *clientList) clientAllowed(name string) error {
 
 	if banUntil, exists := c.declinedClients[name]; exists {
 		if time.Now().Before(banUntil) {
-			return fmt.Errorf("Client %s banned until %s", name, banUntil) // Client is still banned
+			return fmt.Errorf("client %s banned until %s", name, banUntil) // Client is still banned
 		}
 		delete(c.declinedClients, name) // Remove from declined list if enough time has passed
 	}

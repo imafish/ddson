@@ -17,5 +17,7 @@
   3. [ ] Reload config on `SIGHUP`
   4. [ ] A config file for systemd system.
 
+1. [ ] handle SIGTERM to shutdown gracefully
+
 1. [ ] move supporting go code to a separate git repository, so they can be shared across project.
 2. [ ] fail a subtask if it is too slow

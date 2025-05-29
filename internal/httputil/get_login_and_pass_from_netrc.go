@@ -30,18 +30,20 @@ func GetDataFromNetrc(downloadUrl string) (string, string, error) {
 	if stat, err := os.Stat(netrcPath); err == nil && !stat.IsDir() {
 		nrc, err := netrc.ParseFile(netrcPath)
 		if err != nil {
-			return "", "", fmt.Errorf("failed to parse .netrc: %w", err)
+			slog.Error("Failed to parse .netrc file", "path", netrcPath, "error", err)
+			return "", "", err
 		}
 
 		// Find machine entry
 		machine := nrc.FindMachine(parsedURL.Host)
 		if machine == nil {
-			return "", "", fmt.Errorf("no credentials found for host: %s", parsedURL.Host)
+			slog.Debug("No machine entry found in .netrc for host", "host", parsedURL.Host)
+			return "", "", nil
 		}
 		return machine.Login, machine.Password, nil
 	}
 
-	slog.Warn("No .netrc file found or it is a directory", "path", netrcPath)
+	slog.Debug("No .netrc file found or it is a directory", "path", netrcPath)
 	return "", "", nil
 }
 
@@ -55,12 +57,16 @@ func originalUserHomeDir() (string, error) {
 			return "", fmt.Errorf("failed to get current user: %v", err)
 		}
 		return currentUser.HomeDir, nil
+	} else {
+		slog.Debug("Running under sudo, using SUDO_USER", "username", username)
 	}
 
 	// Lookup the original user
 	originalUser, err := user.Lookup(username)
 	if err != nil {
-		return "", fmt.Errorf("failed to lookup user %s: %v", username, err)
+		homeDir := "/home/" + username // Fallback to default home directory
+		slog.Warn("Failed to lookup original user, using default", "username", username, "error", err, "default value", homeDir)
+		return homeDir, nil
 	}
 	return originalUser.HomeDir, nil
 }

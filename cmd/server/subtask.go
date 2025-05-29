@@ -38,64 +38,72 @@ func newSubTaskInfo(downloadUrl string, id int, offset int64, downloadSize int64
 }
 
 func (subTask *subTaskInfo) execute(server *server, quitFlag *bool, finishChan chan int) {
-	defer func() {
-	}()
-
 	for subTask.retryCount <= 3 && !*quitFlag {
-		err := subTask.executeOnce(server, quitFlag)
+		err := subTask.getClientAndDownloadChunk(server, quitFlag)
 		subTask.err = err
 		if err == nil {
 			break
 		}
-		slog.Error("Error executing subtask", "error", err, "subtaskID", subTask.id, "retryCount", subTask.retryCount)
 		subTask.retryCount++
+		slog.Error("Error executing subtask", "error", err, "subtaskID", subTask.id, "retryCount", subTask.retryCount)
 	}
 
-	// if it reaches here, it means the subtask failed after retries
-	if subTask.err != nil {
+	if *quitFlag {
+		// if we reach here, it means the subtask was stopped by the quit flag
+		slog.Info("Subtask execution stopped by quit flag", "subtaskID", subTask.id)
+	} else if subTask.err != nil {
+		// if we reach here, it means the subtask failed after retries
 		slog.Error("Subtask failed after retries", "subtaskID", subTask.id, "error", subTask.err)
-		*quitFlag = true
 	}
+
+	// notify that the subtask either way
+	slog.Info("Subtask execution finished, notifying task", "subtaskID", subTask.id, "retryCount", subTask.retryCount, "error", subTask.err)
 	finishChan <- subTask.id
 }
 
-func (subTask *subTaskInfo) executeOnce(server *server, quitFlag *bool) error {
+func (subTask *subTaskInfo) getClientAndDownloadChunk(server *server, quitFlag *bool) error {
 	// find a client to execute the subtask blocks until a client is available
 	client := server.clients.getIdleClient()
 	defer server.clients.releaseClient(client)
-	slog.Info("Got idle client", "clientID", client.id, "subtaskID", subTask.id)
+	slog.Info("Got idle client", "clientID", client.id, "clientName", client.name, "subtaskID", subTask.id)
 	if *quitFlag {
 		slog.Info("Subtask execution stopped by quit flag", "subtaskID", subTask.id)
 		return fmt.Errorf("subtask execution stopped by quit flag")
 	}
 
-	err := subTask.downloadChunk(client, quitFlag)
+	err := subTask.downloadChunk(quitFlag, fmt.Sprintf("%s:%d", client.addr, client.port), client.id)
 	if err != nil {
 		slog.Error("Error downloading chunk", "error", err, "subtaskID", subTask.id, "retryCount", subTask.retryCount)
+		client.errCount++ // increment error count on failure
+		if client.errCount > 3 {
+			slog.Warn("Client error count exceeded, removing client", "clientID", client.id, "errorCount", client.errCount)
+			server.clients.removeAndCloseClient(client.id)
+			server.clients.banClient(client, 300) // Ban for 5 minutes
+		}
 		return err
 	}
 
-	slog.Debug("Subtask completed successfully", "subtaskID", subTask.id, "file", subTask.targetFile)
+	slog.Debug("Chunk downloaded successfully", "subtaskID", subTask.id, "file", subTask.targetFile)
 	if client.errCount > 0 {
 		client.errCount-- // decrement error count on success
 	}
+
 	return nil
 }
 
-func (subTask *subTaskInfo) downloadChunk(client *clientInfo, quitFlag *bool) error {
+func (subTask *subTaskInfo) downloadChunk(quitFlag *bool, clientAddr string, clientID int) error {
 	downloadUrl, offset, downloadSize := subTask.downloadUrl, subTask.offset, subTask.downloadSize
 	slog.Info("Downloading chunk",
 		"subtaskID", subTask.id,
 		"url", downloadUrl,
 		"offset", offset,
 		"size", downloadSize,
-		"clientID", client.id)
+		"clientID", clientID)
 
 	// TODO: don't initialize a grpc client for each download
 
 	// Create a grpc request to the client to ask for the download
-	clientAddr := fmt.Sprintf("%s:%d", client.addr, client.port)
-	slog.Info("Connecting to client", "clientID", client.id, "address", clientAddr)
+	slog.Info("Connecting to client", "clientID", clientID, "address", clientAddr)
 	// Establish a connection to the server
 	conn, err := grpc.NewClient(clientAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -114,7 +122,7 @@ func (subTask *subTaskInfo) downloadChunk(client *clientInfo, quitFlag *bool) er
 		Offset:    offset,
 		Size:      downloadSize,
 		SubtaskId: int32(subTask.id),
-		ClientId:  int32(subTask.assignedTo),
+		ClientId:  int32(clientID),
 	})
 	if err != nil {
 		slog.Error("Error sending download request", "error", err)
@@ -147,21 +155,17 @@ func (subTask *subTaskInfo) downloadChunk(client *clientInfo, quitFlag *bool) er
 		}
 
 		status := resp.GetStatus()
+		if currentState != status {
+			currentState = status
+			slog.Info("Subtask download status", "subtaskID", subTask.id, "status", status)
+		}
 		switch status {
 		case pb.DownloadStatusType_DOWNLOADING:
-			if currentState != status {
-				currentState = status
-				slog.Info("Subtask download status", "subtaskID", subTask.id, "status", status)
-			}
-			clientID, bytesDownloaded := client.id, resp.DownloadedBytes
+			bytesDownloaded := resp.DownloadedBytes
 			slog.Debug("Client downloaded bytes", "clientID", clientID, "bytes", bytesDownloaded)
-			subTask.progressChan <- [2]int{int(clientID), int(bytesDownloaded)}
+			subTask.progressChan <- [2]int{clientID, int(bytesDownloaded)}
 
 		case pb.DownloadStatusType_TRANSFERRING:
-			if currentState != status {
-				currentState = status
-				slog.Info("Subtask download status", "subtaskID", subTask.id, "status", status)
-			}
 			// Write the data to the file
 			n, err := file.Write(resp.GetData())
 			if err != nil {

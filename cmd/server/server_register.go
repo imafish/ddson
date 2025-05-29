@@ -28,7 +28,6 @@ func (s *server) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.Reg
 		return nil, fmt.Errorf("client %s already registered", req.Name)
 	}
 
-	// TODO should put a lock here
 	err = s.clients.clientAllowed(req.Name)
 	if err != nil {
 		return nil, err

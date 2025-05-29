@@ -1,0 +1,23 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Remote Debug",
+      "type": "go",
+      "request": "attach",
+      "mode": "remote",
+      "remotePath": "${workspaceFolder}",
+      "port": 2345,
+      "host": "10.114.32.120",
+      "showLog": true,
+      "trace": "verbose",
+      "cwd": "${workspaceFolder}",
+      "substitutePath": [
+        {
+          "from": "${workspaceFolder}",
+          "to": "/home/ubuntu/src/ddson"
+        }
+      ]
+    }
+  ]
+}

@@ -44,7 +44,7 @@ func (s *server) monitorClients() {
 		s.clients.mtx.Lock()
 		for id, client := range s.clients.clients {
 			if now.Sub(client.lastSeen) > 20*time.Second {
-				slog.Warn("Client heartbeat timeout, removing", "clientID", id)
+				slog.Warn("Client heartbeat timeout, removing", "clientID", id, "name", client.name, "address", client.addr)
 				s.clients.removeAndCloseClientNoLock(id)
 			}
 			if client.errCount > 5 {

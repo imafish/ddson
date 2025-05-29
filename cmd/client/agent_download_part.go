@@ -20,7 +20,7 @@ func (c *client) DownloadPart(grpcRequest *pb.DownloadPartRequest, stream pb.DDS
 	// Parse .netrc file for credentials
 	username, password, err := httputil.GetDataFromNetrc(url)
 	if err != nil {
-		slog.Error("Failed to parse .netrc file", "error", err)
+		slog.Error("Failed to get credential data from .netrc file", "error", err)
 		return err
 	}
 

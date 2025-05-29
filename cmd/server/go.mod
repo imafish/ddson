@@ -10,10 +10,14 @@ replace internal/httputil => ../../internal/httputil
 
 replace internal/common => ../../internal/common
 
+replace internal/logging => ../../internal/logging
+
 require (
+	golang.org/x/term v0.29.0
 	google.golang.org/grpc v1.72.1
 	internal/common v0.0.0-00010101000000-000000000000
 	internal/httputil v0.0.0
+	internal/logging v0.0.0-00010101000000-000000000000
 	internal/pb v0.0.0
 	internal/version v0.0.0
 )

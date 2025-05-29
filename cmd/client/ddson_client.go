@@ -8,7 +8,10 @@ import (
 	"os"
 	"path"
 
+	"golang.org/x/term"
+
 	"internal/common"
+	"internal/logging"
 	"internal/version"
 )
 
@@ -35,11 +38,13 @@ func main() {
 
 	// Set up slog logger
 	var logger *slog.Logger
+	loglevel := slog.LevelInfo
 	if *debug {
-		logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	} else {
-		logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+		loglevel = slog.LevelDebug
 	}
+	// if stdout is a terminal, use colorized output, otherwise use plain text
+	useColor := term.IsTerminal(int(os.Stdout.Fd()))
+	logger = logging.NewCustomLogger(os.Stdout, loglevel, useColor)
 	slog.SetDefault(logger)
 
 	slog.Info("Starting ddson client", "args", os.Args, "version", version.VersionString)

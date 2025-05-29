@@ -8,9 +8,11 @@ import (
 	"os"
 	"time"
 
+	"golang.org/x/term"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 
+	"internal/logging"
 	"internal/pb"
 )
 
@@ -35,11 +37,14 @@ func main() {
 	flag.Parse()
 
 	// Set up slog logger
+	var logger *slog.Logger
+	loglevel := slog.LevelInfo
 	if *debug {
-		logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	} else {
-		logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+		loglevel = slog.LevelDebug
 	}
+	// if stdout is a terminal, use colorized output, otherwise use plain text
+	useColor := term.IsTerminal(int(os.Stdout.Fd()))
+	logger = logging.NewCustomLogger(os.Stdout, loglevel, useColor)
 	slog.SetDefault(logger)
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))

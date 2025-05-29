@@ -111,7 +111,7 @@ func (h *CustomHandler) Handle(ctx context.Context, r slog.Record) error {
 	// Add attributes with colored keys
 	r.Attrs(func(attr slog.Attr) bool {
 		fmt.Fprintf(h.output, " %s%s%s%s%v",
-			h.colors.Magenta, attr.Key, h.colors.Reset, h.colors.DimmedEqualMark,
+			h.colors.Dim, attr.Key, h.colors.Reset, h.colors.DimmedEqualMark,
 			attr.Value.Any())
 		return true
 	})

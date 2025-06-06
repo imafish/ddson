@@ -233,6 +233,7 @@ func executeSubTasks(task *taskInfo, server *server) error {
 	totalSubTasks := len(task.subtasks)
 	finishChan := make(chan int, totalSubTasks)
 	finishedSubTasks := 0
+	debugFinishedTasks := make([]int, totalSubTasks)
 
 	for _, subTask := range task.subtasks {
 		go subTask.execute(server, &quitFlag, finishChan)
@@ -241,6 +242,10 @@ func executeSubTasks(task *taskInfo, server *server) error {
 	var err error
 	for subtaskID := range finishChan {
 		finishedSubTasks++
+		debugFinishedTasks[subtaskID] = 1 // for debugging purposes
+		debugFinishedString := getDebugFinishedString(debugFinishedTasks, totalSubTasks)
+		slog.Debug("debug", "debugFinishedTasks", debugFinishedString)
+
 		slog.Info("Subtask completed", "subtaskID", subtaskID, "finishedSubTasks", finishedSubTasks)
 		// TODO: subtaskID is also the index in the subtasks slice. Consider using a map?
 		subTask := task.subtasks[subtaskID]
@@ -254,6 +259,7 @@ func executeSubTasks(task *taskInfo, server *server) error {
 		}
 
 		// always wait for all subtasks to finish, even if one fails
+		// this is to prevent subtask to write to progressChan after quitFlag is set
 		if finishedSubTasks == totalSubTasks {
 			slog.Info("All sub tasks finished", "taskID", task.id)
 			close(finishChan)
@@ -303,4 +309,19 @@ func transferFileData(stream pb.DDSONService_DownloadServer, filePath string) er
 		}
 	}
 	return nil
+}
+
+func getDebugFinishedString(debugFinishedTasks []int, totalSubTasks int) string {
+	var debugFinishedTaskBuffer = make([]byte, 0, totalSubTasks*3)
+	debugFinishedTaskBuffer = append(debugFinishedTaskBuffer, '[')
+	for i, finished := range debugFinishedTasks {
+		if finished == 1 {
+			debugFinishedTaskBuffer = append(debugFinishedTaskBuffer, fmt.Sprintf("%d ", i)...)
+		}
+	}
+	if len(debugFinishedTaskBuffer) > 1 && debugFinishedTaskBuffer[len(debugFinishedTaskBuffer)-1] == ' ' {
+		debugFinishedTaskBuffer = debugFinishedTaskBuffer[:len(debugFinishedTaskBuffer)-1]
+	}
+	debugFinishedTaskBuffer = append(debugFinishedTaskBuffer, ']')
+	return string(debugFinishedTaskBuffer)
 }

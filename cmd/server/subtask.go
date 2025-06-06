@@ -59,6 +59,7 @@ func (subTask *subTaskInfo) execute(server *server, quitFlag *bool, finishChan c
 	// notify that the subtask either way
 	slog.Info("Subtask execution finished, notifying task", "subtaskID", subTask.id, "retryCount", subTask.retryCount, "error", subTask.err)
 	finishChan <- subTask.id
+	slog.Debug("Subtask execution finished, task notified", "subtaskID", subTask.id)
 }
 
 func (subTask *subTaskInfo) getClientAndDownloadChunk(server *server, quitFlag *bool) error {
@@ -73,7 +74,7 @@ func (subTask *subTaskInfo) getClientAndDownloadChunk(server *server, quitFlag *
 
 	err := subTask.downloadChunk(quitFlag, fmt.Sprintf("%s:%d", client.addr, client.port), client.id)
 	if err != nil {
-		slog.Error("Error downloading chunk", "error", err, "subtaskID", subTask.id, "retryCount", subTask.retryCount)
+		slog.Error("Error downloading chunk", "error", err, "subtaskID", subTask.id, "retryCount", subTask.retryCount, "clientID", client.id, "clientAddress", client.addr, "clientErrCount", client.errCount)
 		client.errCount++ // increment error count on failure
 		if client.errCount > 3 {
 			slog.Warn("Client error count exceeded, removing client", "clientID", client.id, "errorCount", client.errCount)

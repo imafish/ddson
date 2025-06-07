@@ -7,23 +7,16 @@ import (
 )
 
 func (s *server) Download(req *pb.DownloadRequest, stream pb.DDSONService_DownloadServer) error {
-	slog.Info("Received download request", "url", req.GetUrl(), "clientID", req.GetClientId())
+	slog.Info("Received download request", "url", req.GetUrl(), "agentID", req.GetClientId())
 
-	// the download request must be from a client in the list
-	// TODO: matching client with name is not accurate, improve later
+	// TODO: maybe later, only allow download from registered clients
 	slog.Warn("NOT checking client id for now. implement later")
-	clientId := 0
-	// _, exists := s.clients.getClientById(int(req.GetClientId()))
-	// if !exists {
-	// 	log.Printf("Client #%d not found in the list", req.GetClientId())
-	// 	err := fmt.Errorf("client #%d not found in the list", req.GetClientId())
-	// 	return err
-	// }
+	agentID := 0
 
 	// Send initial status as PENDING
 	err := stream.Send(&pb.DownloadStatus{
 		Status:        pb.DownloadStatusType_PENDING,
-		ClientCount:   int32(len(s.clients.clients)),
+		ClientCount:   int32(s.agentList.Count()),
 		NumberInQueue: int32(s.taskList.size()),
 	})
 	if err != nil {
@@ -32,7 +25,7 @@ func (s *server) Download(req *pb.DownloadRequest, stream pb.DDSONService_Downlo
 	}
 
 	// Create a task and add it to task list
-	taskInfo := s.taskList.addTask(req.GetUrl(), req.GetChecksum(), stream, clientId)
+	taskInfo := s.taskList.addTask(req.GetUrl(), req.GetChecksum(), stream, agentID)
 
 	// wait for the task to complete
 	// TODO: periodically update the status (using select?)

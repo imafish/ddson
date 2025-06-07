@@ -12,24 +12,24 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 
+	"internal/agents"
 	"internal/logging"
 	"internal/pb"
 )
 
 type server struct {
 	pb.UnimplementedDDSONServiceServer
-	clients  *clientList
-	taskList *taskList
+	agentList       agents.AgentList
+	taskList        *taskList
+	heartbeatTimers map[int]*time.Timer
 }
 
 func newServer() *server {
 	return &server{
-		clients:  newClientList(),
-		taskList: newTaskList(),
+		agentList: agents.NewAgentList(),
+		taskList:  newTaskList(),
 	}
 }
-
-var logger *slog.Logger
 
 func main() {
 	debug := flag.Bool("debug", false, "enable debug mode (default: false)")
@@ -38,13 +38,13 @@ func main() {
 
 	// Set up slog logger
 	var logger *slog.Logger
-	loglevel := slog.LevelInfo
+	logLevel := slog.LevelInfo
 	if *debug {
-		loglevel = slog.LevelDebug
+		logLevel = slog.LevelDebug
 	}
 	// if stdout is a terminal, use colorized output, otherwise use plain text
 	useColor := term.IsTerminal(int(os.Stdout.Fd()))
-	logger = logging.NewCustomLogger(os.Stdout, loglevel, useColor)
+	logger = logging.NewCustomLogger(os.Stdout, logLevel, useColor)
 	slog.SetDefault(logger)
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
@@ -64,9 +64,6 @@ func main() {
 
 	serverInstance := newServer()
 	pb.RegisterDDSONServiceServer(s, serverInstance)
-
-	// Start client monitoring goroutine
-	go serverInstance.monitorClients()
 
 	// Start task processing goroutine
 	go serverInstance.runTasks()

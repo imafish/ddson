@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"time"
 
+	"internal/agents"
 	"internal/pb"
 	"internal/version"
 
@@ -13,46 +15,54 @@ import (
 )
 
 func (s *server) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) {
-	slog.Debug("Client registering", "name", req.Name, "version", req.Version)
+	slog.Debug("Agent registering", "name", req.Name, "version", req.Version)
 
 	// check if version is compatible
-	clientVersion, err := version.VersionFromString(req.Version)
+	agentVersion, err := version.VersionFromString(req.Version)
 	if err != nil {
 		return nil, fmt.Errorf("invalid version format: %s", req.Version)
 	}
-	if !version.VersionCompatible(version.CurrentVersion(), clientVersion) {
-		return nil, fmt.Errorf("version mismatch: server %s, client %s", version.CurrentVersion(), clientVersion)
-	}
-	// Check if client already exists
-	if _, exists := s.clients.getClientByName(req.Name); exists {
-		return nil, fmt.Errorf("client %s already registered", req.Name)
+	if !version.VersionCompatible(version.CurrentVersion(), agentVersion) {
+		return nil, fmt.Errorf("version mismatch: server %s, agent %s", version.CurrentVersion(), agentVersion)
 	}
 
-	err = s.clients.clientAllowed(req.Name)
-	if err != nil {
-		return nil, err
-	}
-
+	// get agent IP
 	p, ok := peer.FromContext(ctx)
 	if !ok {
 		return nil, fmt.Errorf("failed to get peer information")
 	}
 	if p.Addr == nil {
-		return nil, fmt.Errorf("failed to get client address")
+		return nil, fmt.Errorf("failed to get agent address")
 	}
-	clientAddr := p.Addr.String()
-	// get client address without port
-	clientAddr = clientAddr[:len(clientAddr)-len(fmt.Sprintf(":%d", p.Addr.(*net.TCPAddr).Port))]
-	clientPort := int(req.Port)
-	slog.Debug("Client info", "address", clientAddr, "port", clientPort, "version", req.Version, "name", req.Name)
+	agentAddr := p.Addr.String()
+	// get agent address without port
+	agentAddr = agentAddr[:len(agentAddr)-len(fmt.Sprintf(":%d", p.Addr.(*net.TCPAddr).Port))]
+	port := int(req.Port)
 
-	// Create new client
-	freeId := s.clients.addClient(req.Name, req.Version, clientAddr, clientPort)
+	addr := net.JoinHostPort(agentAddr, fmt.Sprintf("%d", port))
+	slog.Debug("Agent info", "address", addr, "port", port, "version", req.Version, "name", req.Name)
 
-	slog.Info("Client registered", "name", req.Name, "id", freeId, "address", clientAddr, "port", clientPort)
+	// Create new agent
+	newAgent := agents.NewAgent(req.Name, req.Version, addr)
+	id, err := s.agentList.AddAgent(newAgent)
+	if err != nil {
+		slog.Error("Failed to register agent", "error", err, "name", req.Name, "address", agentAddr, "port", port)
+		return nil, err
+	}
+	heartbeatTimer := time.NewTimer(20 * time.Second)
+	s.heartbeatTimers[id] = heartbeatTimer
 
+	go func() {
+		<-heartbeatTimer.C
+		slog.Debug("Heartbeat timer expired, removing agent", "agentID", id, "name", req.Name, "address", addr)
+		newAgent.Retire()
+		s.agentList.RemoveAgent(id)
+		delete(s.heartbeatTimers, id)
+	}()
+
+	slog.Info("Agent registered", "name", req.Name, "id", id, "address", addr)
 	return &pb.RegisterResponse{
-		Id:            int32(freeId),
+		Id:            int32(id),
 		ServerVersion: version.CurrentVersion().String(),
 	}, nil
 }

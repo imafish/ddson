@@ -8,12 +8,10 @@
 ## Problems
 
 1. [ ] Sometimes server stuck, with 1 unfinished subtask
-2. [ ] Should be able to cache downloaded tasks.
-3. [ ] Should handle client abort.
-4. [ ] Should check if user is running daemon
-5. [ ] Should calculate speed accurately
-6. [ ] Should return how many active agents ??
-7. [ ] Should return status of current status -- size of queue, total download size, current speed, estimated wait time.
+2. [ ] Should handle client abort.
+3. [ ] Should check if user is running daemon
+4. [ ] Should calculate speed accurately
+5. [ ] Should return status of current status -- size of queue, total download size, current speed, estimated wait time.
 
 ## Dev plan
 
@@ -29,7 +27,13 @@
    4. [ ] A config file for systemd system.
 3. [ ] handle SIGTERM to shutdown gracefully
 4. [ ] move supporting go code to a separate git repository, so they can be shared across project.
-5. [ ] fail a subtask if it is too slow
+5. [ ] fail a subtask if it is too slow (timeout)
+6. [ ] use a db to track saved files, and cache them.
+7. [ ] more commands:
+   1. [ ] query
+   2. [ ] request
+   3. [ ] download
+   4. [ ] status
 
 ## MISC
 

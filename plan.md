@@ -1,7 +1,18 @@
-# test plan
+# Plan
+
+## Test plan
 
 1. [x] register
 2. [x] heartbeat
+
+## Problems
+1. [ ] Sometimes server stuck, with 1 unfinished subtask
+2. [ ] Should be able to cache downloaded tasks.
+3. [ ] Should check if user is running daemon
+4. [ ] Should calculate speed accurately
+5. [ ] Should return how many active agents ??
+6. [ ] Should return status of current status -- size of queue, total download size, current speed, estimated wait time.
+
 
 ## Dev plan
 

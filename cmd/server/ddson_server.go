@@ -26,8 +26,9 @@ type server struct {
 
 func newServer() *server {
 	return &server{
-		agentList: agents.NewAgentList(),
-		taskList:  newTaskList(),
+		agentList:       agents.NewAgentList(),
+		taskList:        newTaskList(),
+		heartbeatTimers: make(map[int]*time.Timer),
 	}
 }
 

@@ -43,7 +43,7 @@ func (al *AgentListImpl) AddAgent(agent Agent) (int, error) {
 
 	agentAddr := agent.GetAgentInfo().GetAddr()
 
-	isBanned, until := al.isAgentBanned(agentAddr)
+	isBanned, until := al.isAgentBannedNoLock(agentAddr)
 	if isBanned {
 		return 0, &AgentIsBannedError{
 			AgentAddr: agentAddr,
@@ -160,10 +160,7 @@ func (al *AgentListImpl) freeAgent(id int) {
 	}
 }
 
-func (al *AgentListImpl) isAgentBanned(addr string) (bool, time.Time) {
-	al.mtx.Lock()
-	defer al.mtx.Unlock()
-
+func (al *AgentListImpl) isAgentBannedNoLock(addr string) (bool, time.Time) {
 	until, exists := al.bannedAgents[addr]
 	if !exists {
 		return false, time.Time{}

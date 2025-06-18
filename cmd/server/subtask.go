@@ -70,8 +70,9 @@ func (subTask *subTaskInfo) execute(server *server, quitFlag *bool, finishChan c
 
 func (subTask *subTaskInfo) downloadChunk(quitFlag *bool, addr string, agentID int) error {
 	downloadUrl, offset, downloadSize := subTask.downloadUrl, subTask.offset, subTask.downloadSize
+	subtaskID := subTask.id
 	slog.Info("Downloading chunk",
-		"subtaskID", subTask.id,
+		"subtaskID", subtaskID,
 		"url", downloadUrl,
 		"offset", offset,
 		"size", downloadSize,
@@ -80,17 +81,17 @@ func (subTask *subTaskInfo) downloadChunk(quitFlag *bool, addr string, agentID i
 	// TODO: don't initialize a grpc agent for each download
 
 	// Create a grpc request to the agent to ask for the download
-	slog.Info("Connecting to agent", "agentID", agentID, "address", addr)
+	slog.Info("Connecting to agent", "subtaskID", subtaskID, "agentID", agentID, "address", addr)
 	// Establish a connection to the server
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		slog.Error("failed to connect to server", "error", err)
+		slog.Error("failed to connect to server", "subtaskID", subtaskID, "error", err)
 	}
 	defer conn.Close()
 
 	grpcClient := pb.NewDDSONServiceClientClient(conn)
 	if err != nil {
-		slog.Error("Error creating gRPC client", "error", err)
+		slog.Error("Error creating gRPC client", "subtaskID", subtaskID, "error", err)
 		return err
 	}
 	// Send the request to the agent
@@ -98,73 +99,75 @@ func (subTask *subTaskInfo) downloadChunk(quitFlag *bool, addr string, agentID i
 		Url:       downloadUrl,
 		Offset:    offset,
 		Size:      downloadSize,
-		SubtaskId: int32(subTask.id),
+		SubtaskId: int32(subtaskID),
 		ClientId:  int32(agentID),
 	})
 	if err != nil {
-		slog.Error("Error sending download request", "error", err)
+		slog.Error("Error sending download request", "subtaskID", subtaskID, "error", err)
 		return err
 	}
-	defer stream.CloseSend()
 
 	// Read the response from the agent
 	targetFile := subTask.targetFile
 	file, err := os.Create(targetFile)
 	if err != nil {
-		slog.Error("Error creating file", "error", err)
+		slog.Error("Error creating file", "subtaskID", subtaskID, "error", err)
 		return err
 	}
 	defer file.Close()
 
 	// Read the data from the stream and write it to the file
-	slog.Info("Starting download for subtask", "subtaskID", subTask.id, "file", targetFile)
+	slog.Info("Starting download for subtask", "subtaskID", subtaskID, "file", targetFile)
 	var received int64 = 0
 	currentState := pb.DownloadStatusType_PENDING
 	for !*quitFlag {
 		resp, err := stream.Recv()
 		if err == io.EOF {
-			slog.Debug("EOF received.", "subtaskID", subTask.id)
+			slog.Debug("EOF received.", "subtaskID", subtaskID)
 			break
 		}
 		if err != nil {
-			slog.Error("Error receiving data", "error", err)
+			slog.Error("Error receiving data", "subtaskID", subtaskID, "error", err)
 			return err
 		}
 
 		status := resp.GetStatus()
 		if currentState != status {
 			currentState = status
-			slog.Info("Subtask download status", "subtaskID", subTask.id, "status", status)
+			slog.Debug("Subtask download status", "subtaskID", subtaskID, "status", status)
 		}
 		switch status {
 		case pb.DownloadStatusType_DOWNLOADING:
 			bytesDownloaded := resp.DownloadedBytes
-			slog.Debug("Agent downloaded bytes", "agentID", agentID, "bytes", bytesDownloaded)
+			slog.Debug("Agent downloaded bytes", "subtaskID", subtaskID, "agentID", agentID, "bytes", bytesDownloaded)
 			subTask.progressChan <- [2]int{agentID, int(bytesDownloaded)}
 
 		case pb.DownloadStatusType_TRANSFERRING:
 			// Write the data to the file
+			dataSize := len(resp.GetData())
+			slog.Debug("Writing data to file", "subtaskID", subtaskID, "size", dataSize)
 			n, err := file.Write(resp.GetData())
 			if err != nil {
-				slog.Error("Error writing to file", "error", err)
+				slog.Error("Error writing to file", "subtaskID", subtaskID, "error", err)
 				return err
 			}
 			received += int64(n)
+			slog.Debug("Data written to file", "subtaskID", subtaskID, "bytesWritten", n, "dataSize", dataSize, "totalReceived", received)
 
 		default:
-			slog.Error("Unexpected status", "status", resp.GetStatus())
+			slog.Error("Unexpected status", "subtaskID", subtaskID, "status", resp.GetStatus())
 			return fmt.Errorf("unexpected status: %s", resp.GetStatus())
 		}
 	}
 
 	if *quitFlag {
-		slog.Info("Download stopped by quit flag", "subtaskID", subTask.id)
+		slog.Info("Download stopped by quit flag", "subtaskID", subtaskID)
 		return fmt.Errorf("download stopped by quit flag")
 	}
 	if received != downloadSize {
-		slog.Error("Error: received bytes mismatch", "received", received, "expected", downloadSize)
+		slog.Error("Error: received bytes mismatch", "subtaskID", subtaskID, "received", received, "expected", downloadSize)
 		return fmt.Errorf("received %d bytes, expected %d bytes", received, downloadSize)
 	}
-	slog.Info("Download completed for subtask", "subtaskID", subTask.id, "file", targetFile)
+	slog.Info("Download completed for subtask", "subtaskID", subtaskID, "file", targetFile)
 	return nil
 }

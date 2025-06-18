@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"internal/common"
@@ -15,7 +16,7 @@ import (
 // DownloadPart implements the DownloadPart method of the DDSONServiceClientServer interface.
 func (c *client) DownloadPart(grpcRequest *pb.DownloadPartRequest, stream pb.DDSONServiceClient_DownloadPartServer) error {
 	url, offset, size, clientId, subtaskId := grpcRequest.Url, grpcRequest.Offset, grpcRequest.Size, grpcRequest.ClientId, grpcRequest.SubtaskId
-	slog.Info("Received download request", "URL", url, "Offset", offset, "Size", size, "ClientId", clientId, "SubtaskId", subtaskId)
+	slog.Info("Received download request", "URL", url, "Offset", offset, "Size", size, "ClientId", clientId, "subtaskID", subtaskId)
 
 	// Parse .netrc file for credentials
 	username, password, err := httputil.GetDataFromNetrc(url)
@@ -90,42 +91,15 @@ func (c *client) DownloadPart(grpcRequest *pb.DownloadPartRequest, stream pb.DDS
 // It returns the downloaded data as a byte slice.
 // Upon success, it ensures that the downloaded data matches the expected size.
 func downloadFromServer(resp *http.Response, stream pb.DDSONServiceClient_DownloadPartServer, size int64) ([]byte, error) {
+	// Must close channel first, then wait on waitgroup
+	var wg sync.WaitGroup
+	wg.Add(1)
+	defer wg.Wait()
 	progressChannel := make(chan int64, 10)
 	defer close(progressChannel)
 
 	// goroutine to handle progress updates
-	go func() {
-		startTime := time.Now()
-		reportTime := time.Now()
-		totalDownloaded := int64(0)
-		downloadedSinceLastUpdate := int64(0)
-
-		for downloaded := range progressChannel {
-			downloadSpeed := 0
-			elapsed := time.Since(startTime)
-			totalDownloaded += downloaded
-			downloadedSinceLastUpdate += downloaded
-			if elapsed.Seconds() > 0 {
-				downloadSpeed = int(float64(totalDownloaded) / elapsed.Seconds())
-			}
-			slog.Debug("Download progress", "downloaded", common.PrettyFormatSize(downloaded), "total", common.PrettyFormatSize(totalDownloaded), "speed", common.PrettyFormatSpeed(downloadSpeed))
-			// update progress to the server every 2 seconds
-			if time.Since(reportTime) > 2*time.Second {
-				reportTime = time.Now()
-				slog.Debug("Sending progress update to server", "downloaded", common.PrettyFormatSize(downloadedSinceLastUpdate), "speed", common.PrettyFormatSpeed(downloadSpeed))
-				err := stream.Send(&pb.DownloadStatus{
-					Status:          pb.DownloadStatusType_DOWNLOADING,
-					Speed:           int32(downloadSpeed),
-					DownloadedBytes: downloadedSinceLastUpdate,
-				})
-				downloadedSinceLastUpdate = 0
-				if err != nil {
-					slog.Error("Failed to send progress update", "error", err)
-					return
-				}
-			}
-		}
-	}()
+	go reportProgress(stream, &wg, progressChannel)
 
 	// Read the response body into a buffer
 	// TODO: later, directly copy the http.Response.Body to the calling client (don't wait for download to complete)
@@ -168,4 +142,38 @@ func downloadFromServer(resp *http.Response, stream pb.DDSONServiceClient_Downlo
 	}
 
 	return fullBuffer, nil
+}
+
+func reportProgress(stream pb.DDSONServiceClient_DownloadPartServer, wg *sync.WaitGroup, progressChannel chan int64) {
+	defer wg.Done()
+	startTime := time.Now()
+	reportTime := time.Now()
+	totalDownloaded := int64(0)
+	downloadedSinceLastUpdate := int64(0)
+
+	for downloaded := range progressChannel {
+		downloadSpeed := 0
+		elapsed := time.Since(startTime)
+		totalDownloaded += downloaded
+		downloadedSinceLastUpdate += downloaded
+		if elapsed.Seconds() > 0 {
+			downloadSpeed = int(float64(totalDownloaded) / elapsed.Seconds())
+		}
+		slog.Debug("Download progress", "downloaded", common.PrettyFormatSize(downloaded), "total", common.PrettyFormatSize(totalDownloaded), "speed", common.PrettyFormatSpeed(downloadSpeed))
+		// update progress to the server every 2 seconds
+		if time.Since(reportTime) > 2*time.Second {
+			reportTime = time.Now()
+			slog.Debug("Sending progress update to server", "downloaded", common.PrettyFormatSize(downloadedSinceLastUpdate), "speed", common.PrettyFormatSpeed(downloadSpeed))
+			err := stream.Send(&pb.DownloadStatus{
+				Status:          pb.DownloadStatusType_DOWNLOADING,
+				Speed:           int32(downloadSpeed),
+				DownloadedBytes: downloadedSinceLastUpdate,
+			})
+			downloadedSinceLastUpdate = 0
+			if err != nil {
+				slog.Error("Failed to send progress update", "error", err)
+				return
+			}
+		}
+	}
 }

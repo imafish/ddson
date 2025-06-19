@@ -13,6 +13,7 @@ func (s *server) Heartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*pb.H
 	id := int(req.Id)
 	agent := s.agentList.GetAgentByID(id)
 	if agent == nil {
+		slog.Warn("Heartbeat from unregistered client", "clientID", id, "clientName", req.Name)
 		return &pb.HeartbeatResponse{
 			Success: false,
 			Message: fmt.Sprintf("client #%d not registered", id),

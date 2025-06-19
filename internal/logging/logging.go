@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 )
 
 // Colors for terminal output
@@ -77,8 +78,9 @@ func (h *CustomHandler) Enabled(ctx context.Context, level slog.Level) bool {
 func (h *CustomHandler) Handle(ctx context.Context, r slog.Record) error {
 	// Format timestamp (brief format)
 	timeStr := r.Time.Format("060102-15:04:05.000")
+	stringbuilder := &strings.Builder{}
 
-	// Format level (4-letter width)
+	// Format level (5-letter width)
 	levelStr := r.Level.String()
 	switch {
 	case len(levelStr) > 5:
@@ -103,20 +105,24 @@ func (h *CustomHandler) Handle(ctx context.Context, r slog.Record) error {
 	}
 
 	// Write the main log line
-	fmt.Fprintf(h.output, "%s %s%-5s%s %s",
+	fmt.Fprintf(stringbuilder, "%s %s%-5s%s %s",
 		h.colors.Dim+timeStr+h.colors.Reset,
 		levelColor, levelStr, h.colors.Reset,
 		r.Message)
 
 	// Add attributes with colored keys
 	r.Attrs(func(attr slog.Attr) bool {
-		fmt.Fprintf(h.output, " %s%s%s%s%v",
+		fmt.Fprintf(stringbuilder, " %s%s%s%s%v",
 			h.colors.Dim, attr.Key, h.colors.Reset, h.colors.DimmedEqualMark,
 			attr.Value.Any())
 		return true
 	})
 
-	fmt.Fprintln(h.output) // Newline at end
+	fmt.Fprintln(stringbuilder) // Newline at end
+
+	// TODO: observe if a lock is needed, or flushing is needed.
+	fmt.Fprint(h.output, stringbuilder.String())
+
 	return nil
 }
 
@@ -124,6 +130,7 @@ func (h *CustomHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return &CustomHandler{
 		handler: h.handler.WithAttrs(attrs),
 		output:  h.output,
+		colors:  h.colors,
 	}
 }
 
@@ -131,6 +138,7 @@ func (h *CustomHandler) WithGroup(name string) slog.Handler {
 	return &CustomHandler{
 		handler: h.handler.WithGroup(name),
 		output:  h.output,
+		colors:  h.colors,
 	}
 }
 

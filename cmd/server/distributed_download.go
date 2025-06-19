@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -298,7 +299,7 @@ func transferFileData(stream pb.DDSONService_DownloadServer, filePath string) er
 			slog.Error("Error reading file", "error", err)
 			return err
 		}
-		slog.Debug("Sending bytes", "count", n, "totalSent", totalBytesSent)
+		slog.Log(context.Background(), slog.LevelDebug-1, "Sending bytes", "count", n, "totalSent", totalBytesSent)
 		err = stream.Send(&pb.DownloadStatus{
 			Status: pb.DownloadStatusType_TRANSFERRING,
 			Data:   buffer[:n],
@@ -307,6 +308,7 @@ func transferFileData(stream pb.DDSONService_DownloadServer, filePath string) er
 			slog.Error("Error sending file data", "error", err)
 			return err
 		}
+		totalBytesSent += n
 	}
 	return nil
 }

@@ -22,6 +22,7 @@ var (
 	output      = flag.String("output", "", "output file name")
 	servicePort = flag.Int("port", 5510, "the port to listen on")
 	debug       = flag.Bool("debug", false, "enable debug mode (default: false)")
+	verbose     = flag.Bool("verbose", false, "enable verbose logging (default: false)")
 	sha256      = flag.String("sha256", "", "SHA256 checksum of the file to download (optional, for verification)")
 	daemonize   = flag.Bool("daemon", false, "run as a daemon process (default: false)")
 	forceDaemon = flag.Bool("force", false, "force daemonize even if pidfile exists (default: false)")
@@ -41,6 +42,9 @@ func main() {
 	loglevel := slog.LevelInfo
 	if *debug {
 		loglevel = slog.LevelDebug
+	}
+	if *verbose {
+		loglevel = slog.LevelDebug - 1
 	}
 	// if stdout is a terminal, use colorized output, otherwise use plain text
 	useColor := term.IsTerminal(int(os.Stdout.Fd()))

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -118,7 +119,7 @@ func downloadFromServer(resp *http.Response, stream pb.DDSONServiceClient_Downlo
 
 		offset := totalDownloaded
 		totalDownloaded += int64(n)
-		slog.Debug("Downloaded chunk", "chunkSize", common.PrettyFormatSize(int64(n)), "totalDownloaded", common.PrettyFormatSize(totalDownloaded))
+		slog.Log(context.Background(), slog.LevelDebug-1, "Downloaded chunk", "chunkSize", common.PrettyFormatSize(int64(n)), "totalDownloaded", common.PrettyFormatSize(totalDownloaded))
 		if totalDownloaded > size {
 			slog.Error("Read more data than expected", "downloaded", totalDownloaded, "expected", size)
 			return nil, fmt.Errorf("read more data than expected: downloaded: %d, expected: %d", totalDownloaded, size)
@@ -159,7 +160,7 @@ func reportProgress(stream pb.DDSONServiceClient_DownloadPartServer, wg *sync.Wa
 		if elapsed.Seconds() > 0 {
 			downloadSpeed = int(float64(totalDownloaded) / elapsed.Seconds())
 		}
-		slog.Debug("Download progress", "downloaded", common.PrettyFormatSize(downloaded), "total", common.PrettyFormatSize(totalDownloaded), "speed", common.PrettyFormatSpeed(downloadSpeed))
+		slog.Log(context.Background(), slog.LevelDebug-1, "Download progress", "downloaded", common.PrettyFormatSize(downloaded), "total", common.PrettyFormatSize(totalDownloaded), "speed", common.PrettyFormatSpeed(downloadSpeed))
 		// update progress to the server every 2 seconds
 		if time.Since(reportTime) > 2*time.Second {
 			reportTime = time.Now()

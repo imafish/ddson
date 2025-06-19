@@ -109,7 +109,7 @@ func sendHeartbeats(client pb.DDSONServiceClient, id int32) {
 	for {
 		<-ticker.C
 
-		slog.Debug("Sending heartbeat to server...")
+		slog.Log(context.Background(), slog.LevelDebug-1, "Sending heartbeat to server...")
 		resp, err := client.Heartbeat(context.Background(), &pb.HeartbeatRequest{
 			Name: *clientName,
 			Id:   id,
@@ -121,7 +121,7 @@ func sendHeartbeats(client pb.DDSONServiceClient, id int32) {
 			if errCount > 0 {
 				errCount--
 			}
-			slog.Debug("Heartbeat successful", "count", errCount, "message", resp.Message)
+			slog.Log(context.Background(), slog.LevelDebug-1, "Heartbeat successful", "count", errCount, "message", resp.Message)
 		} else {
 			// resp.Success is false
 			slog.Warn("Heartbeat rejected", "count", errCount, "message", resp.Message)

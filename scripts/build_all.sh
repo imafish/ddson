@@ -21,9 +21,13 @@ server_dir="$base_dir/cmd/server"
 # Build the client
 client_linux_amd64="$output_dir/ddson_client_linux_amd64"
 client_darwin_arm64="$output_dir/ddson_client_darwin_arm64"
+client_win32_amd64="$output_dir/ddson_client_windows_amd64.exe"
+
 pushd "$client_dir" || exit 1
 GOOS=linux GOARCH=amd64 go build -o "$client_linux_amd64" 
 GOOS=darwin GOARCH=arm64 go build -o "$client_darwin_arm64" 
+# Windows cannot forkexec
+# GOOS=windows GOARCH=amd64 go build -o "$client_win32_amd64"
 popd || exit 1
 
 # Build the server

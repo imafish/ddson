@@ -4,6 +4,14 @@ realpath=$(realpath "$0")
 script_dir=$(dirname "$realpath")
 base_dir=$(dirname "$script_dir")
 
+set -e
+set -x
+
+# build grpc stubs
+pushd "$base_dir" || exit 1
+protoc --go_out=. --go-grpc_out=. ./api/proto/ddson_service.proto
+popd || exit 1
+
 output_dir="$base_dir/output"
 mkdir -p "$output_dir"
 

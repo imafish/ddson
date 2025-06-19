@@ -8,8 +8,9 @@ import (
 	"time"
 )
 
+// TODO: try to use a long lived connection instead of heartbeats
 func (s *server) Heartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*pb.HeartbeatResponse, error) {
-	slog.Debug("Received heartbeat", "clientName", req.Name, "clientID", req.Id)
+	slog.Log(context.Background(), slog.LevelDebug-1, "Heartbeat received", "clientName", req.Name, "clientID", req.Id)
 	id := int(req.Id)
 	agent := s.agentList.GetAgentByID(id)
 	if agent == nil {

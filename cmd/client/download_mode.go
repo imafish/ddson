@@ -99,7 +99,7 @@ func download() {
 			slog.Debug("Received data", "size", common.PrettyFormatSize(received))
 
 		case pb.DownloadStatusType_PENDING:
-			slog.Warn("Download is in queue", "queuePosition", resp.NumberInQueue, "clientCount", resp.ClientCount)
+			slog.Warn("Download is in queue", "queuePosition", resp.NumberInQueue, "clientCount", resp.ClientCount, "message", resp.Message)
 
 		case pb.DownloadStatusType_VALIDATING:
 			slog.Info("Validating integrity...")

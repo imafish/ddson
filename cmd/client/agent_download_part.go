@@ -15,8 +15,8 @@ import (
 
 // DownloadPart implements the DownloadPart method of the DDSONServiceClientServer interface.
 func (c *client) DownloadPart(grpcRequest *pb.DownloadPartRequest, stream pb.DDSONServiceClient_DownloadPartServer) error {
-	url, offset, size, clientId, subtaskId := grpcRequest.Url, grpcRequest.Offset, grpcRequest.Size, grpcRequest.ClientId, grpcRequest.SubtaskId
-	slog.Info("Received download request", "URL", url, "Offset", offset, "Size", size, "ClientId", clientId, "subtaskID", subtaskId)
+	url, offset, size, clientId, subtaskID := grpcRequest.Url, grpcRequest.Offset, grpcRequest.Size, grpcRequest.ClientId, grpcRequest.SubtaskId
+	slog.Info("Received download request", "URL", url, "Offset", offset, "Size", size, "ClientId", clientId, "subtaskID", subtaskID)
 
 	// Parse .netrc file for credentials
 	username, password, err := httputil.GetDataFromNetrc(url)

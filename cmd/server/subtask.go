@@ -139,7 +139,7 @@ func (subTask *subTaskInfo) downloadChunk(quitFlag *bool, addr string, agentID i
 		switch status {
 		case pb.DownloadStatusType_DOWNLOADING:
 			bytesDownloaded := resp.DownloadedBytes
-			slog.Debug("Agent downloaded bytes", "subtaskID", subtaskID, "agentID", agentID, "bytes", bytesDownloaded)
+			slog.Log(context.Background(), slog.LevelDebug-1, "Agent downloaded bytes", "subtaskID", subtaskID, "agentID", agentID, "bytes", bytesDownloaded)
 			subTask.progressChan <- [2]int{agentID, int(bytesDownloaded)}
 
 		case pb.DownloadStatusType_TRANSFERRING:

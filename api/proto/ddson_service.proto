@@ -73,8 +73,8 @@ message DownloadStatus {
   int64 downloadedBytes = 4;      // Bytes downloaded since last update,
                                   // agent -> server
   int64 totalDownloadedBytes = 5; // Bytes downloaded, server -> client
+  bytes data = 6;
   int32 numberInQueue = 7;        // Number in the queue,
                                   // PENDING, server -> client
-
-  bytes data = 6;
+  string message = 8;             // Message, server -> client
 }

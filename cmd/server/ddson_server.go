@@ -35,6 +35,7 @@ func newServer() *server {
 func main() {
 	debug := flag.Bool("debug", false, "enable debug mode (default: false)")
 	port := flag.Int("port", 5510, "the port to listen on (default: 5510)")
+	verbose := flag.Bool("verbose", false, "enable verbose logging (default: false)")
 	flag.Parse()
 
 	// Set up slog logger
@@ -43,6 +44,10 @@ func main() {
 	if *debug {
 		logLevel = slog.LevelDebug
 	}
+	if *verbose {
+		logLevel = slog.LevelDebug - 1
+	}
+
 	// if stdout is a terminal, use colorized output, otherwise use plain text
 	useColor := term.IsTerminal(int(os.Stdout.Fd()))
 	logger = logging.NewCustomLogger(os.Stdout, logLevel, useColor)

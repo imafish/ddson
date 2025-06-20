@@ -74,7 +74,7 @@ func download() {
 		resp, err = stream.Recv()
 
 		// Create file after receiving the first response
-		if file == nil && (err == nil || err == io.EOF) {
+		if file == nil && err == nil {
 			file, err = os.Create(*output)
 			if err != nil {
 				slog.Error("Failed to create output file", "error", err)

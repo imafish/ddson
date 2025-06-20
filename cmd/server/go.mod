@@ -8,18 +8,20 @@ replace (
 	internal/httputil => ../../internal/httputil
 	internal/logging => ../../internal/logging
 	internal/pb => ../../internal/pb
+	internal/persistency => ../../internal/persistency
 	internal/version => ../../internal/version
 )
 
 require (
 	golang.org/x/term v0.32.0
 	google.golang.org/grpc v1.73.0
-	internal/agents v0.0.0-00010101000000-000000000000
-	internal/common v0.0.0-00010101000000-000000000000
+	internal/agents v0.0.0
+	internal/common v0.0.0
 	internal/httputil v0.0.0
-	internal/logging v0.0.0-00010101000000-000000000000
+	internal/logging v0.0.0
 	internal/pb v0.0.0
 	internal/version v0.0.0
+// internal/persistency v0.0.0
 )
 
 require (

@@ -15,7 +15,7 @@ import (
 	"internal/agents"
 	"internal/logging"
 	"internal/pb"
-	// "internal/persistency"
+	"internal/persistency"
 )
 
 type server struct {
@@ -23,7 +23,7 @@ type server struct {
 	agentList       agents.AgentList
 	taskList        *taskList
 	heartbeatTimers map[int]*time.Timer
-	// persistency     *persistency.Persistency
+	persistency     *persistency.Persistency
 }
 
 func newServer() *server {

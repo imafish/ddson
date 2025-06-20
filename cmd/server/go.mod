@@ -21,7 +21,7 @@ require (
 	internal/logging v0.0.0
 	internal/pb v0.0.0
 	internal/version v0.0.0
-// internal/persistency v0.0.0
+	internal/persistency v0.0.0
 )
 
 require (

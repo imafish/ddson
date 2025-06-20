@@ -230,14 +230,13 @@ func createSubtasks(downloadUrl string, tmpDir string, totalSize int64, progress
 }
 
 func executeSubTasks(task *taskInfo, server *server) error {
-	quitFlag := false
 	totalSubTasks := len(task.subtasks)
 	finishChan := make(chan int, totalSubTasks)
 	finishedSubTasks := 0
 	debugFinishedTasks := make([]int, totalSubTasks)
 
 	for _, subTask := range task.subtasks {
-		go subTask.execute(server, &quitFlag, finishChan)
+		go subTask.execute(server, &task.quitFlag, finishChan)
 	}
 
 	var err error
@@ -256,7 +255,7 @@ func executeSubTasks(task *taskInfo, server *server) error {
 				err = subTask.err
 			}
 			slog.Error("Subtask failed", "subtaskID", subTask.id, "error", subTask.err)
-			quitFlag = true
+			task.setError(err)
 		}
 
 		// always wait for all subtasks to finish, even if one fails

@@ -28,8 +28,9 @@ type taskInfo struct {
 	state    taskState
 	subtasks []*subTaskInfo
 
-	err  error
-	done chan bool
+	err      error
+	quitFlag bool // used to signal subtasks to stop processing
+	done     chan bool
 }
 
 func newTaskInfo(downloadUrl string, checksum string, stream pb.DDSONService_DownloadServer, taskId int, idOfClient int) *taskInfo {
@@ -52,6 +53,7 @@ func newTaskInfo(downloadUrl string, checksum string, stream pb.DDSONService_Dow
 // setError sets the error for the task and updates its state to FAILED
 func (t *taskInfo) setError(err error) {
 	t.err = err
+	t.quitFlag = true
 	t.state = taskState_FAILED
 }
 

@@ -16,17 +16,18 @@ import (
 )
 
 var (
-	addr        = flag.String("addr", "localhost:5510", "the address to connect to")
-	clientName  = flag.String("name", "", "the name of the client")
-	downloadUrl = flag.String("url", "", "URL to download from")
-	output      = flag.String("output", "", "output file name")
-	servicePort = flag.Int("port", 5510, "the port to listen on")
-	debug       = flag.Bool("debug", false, "enable debug mode (default: false)")
-	verbose     = flag.Bool("verbose", false, "enable verbose logging (default: false)")
-	sha256      = flag.String("sha256", "", "SHA256 checksum of the file to download (optional, for verification)")
-	daemonize   = flag.Bool("daemon", false, "run as a daemon process (default: false)")
-	forceDaemon = flag.Bool("force", false, "force daemonize even if pidfile exists (default: false)")
-	stopDaemon  = flag.Bool("stop", false, "stop the daemon process (default: false)")
+	addr         = flag.String("addr", "localhost:5510", "the address to connect to")
+	clientName   = flag.String("name", "", "the name of the client")
+	downloadUrl  = flag.String("url", "", "URL to download from")
+	output       = flag.String("output", "", "output file name")
+	servicePort  = flag.Int("port", 5510, "the port to listen on")
+	debug        = flag.Bool("debug", false, "enable debug mode (default: false)")
+	verbose      = flag.Bool("verbose", false, "enable verbose logging (default: false)")
+	sha256       = flag.String("sha256", "", "SHA256 checksum of the file to download (optional, for verification)")
+	daemonize    = flag.Bool("daemon", false, "run as a daemon process (default: false)")
+	forceDaemon  = flag.Bool("force", false, "force daemonize even if pidfile exists (default: false)")
+	stopDaemon   = flag.Bool("stop", false, "stop the daemon process (default: false)")
+	printVersion = flag.Bool("version", false, "print version information and exit")
 )
 
 const (
@@ -36,6 +37,11 @@ const (
 
 func main() {
 	flag.Parse()
+
+	if *printVersion {
+		fmt.Println(version.VersionString)
+		return
+	}
 
 	// Set up slog logger
 	var logger *slog.Logger

@@ -13,6 +13,7 @@ import (
 	"internal/common"
 	"internal/httputil"
 	"internal/pb"
+	"internal/progressbar"
 )
 
 func download() {
@@ -56,11 +57,21 @@ func download() {
 	// Open the output file
 	var file *os.File = nil
 	var received int64 = 0
-	transferringStarted := false
+	var resp *pb.DownloadStatus
+	bottomLineFunc := func(percentage float64, width int) string {
+		return fmtProgress(resp, totalSize)
+	}
+	progressBar, err := progressbar.New(progressbar.Basketball(), os.Stdout, bottomLineFunc)
+	if err != nil {
+		slog.Error("Failed to create progress bar", "error", err)
+	} else {
+		progressBar.Start()
+		defer progressBar.Done()
+	}
 
 	// Process the responses from the server
 	for {
-		resp, err := stream.Recv()
+		resp, err = stream.Recv()
 
 		// Create file after receiving the first response
 		if file == nil && (err == nil || err == io.EOF) {
@@ -74,46 +85,77 @@ func download() {
 
 		if err != nil {
 			if err == io.EOF {
-				slog.Info("Download completed")
+				if progressBar != nil {
+					progressBar.Update(1.0)
+				} else {
+					slog.Info("Download completed")
+				}
 				break
 			}
 			slog.Error("Error receiving data", "error", err)
 			os.Exit(1)
 		}
 
+		printProgress(resp, totalSize, progressBar)
 		switch resp.GetStatus() {
 		case pb.DownloadStatusType_DOWNLOADING:
-			slog.Info(fmtProgress(resp, totalSize))
+			if progressBar != nil {
+				progressBar.Update(float64(resp.GetTotalDownloadedBytes()) / float64(totalSize))
+			} else {
+				slog.Info(fmtProgress(resp, totalSize))
+			}
 
 		case pb.DownloadStatusType_TRANSFERRING:
-			if !transferringStarted {
-				slog.Info("Start receiving data from server...")
-				transferringStarted = true
-			}
 			// Write data to the file
 			if _, err := file.Write(resp.GetData()); err != nil {
 				slog.Error("Failed to write data to file", "error", err)
 				os.Exit(1)
 			}
 			received += int64(len(resp.GetData()))
-			slog.Debug("Received data", "size", common.PrettyFormatSize(received))
-
-		case pb.DownloadStatusType_PENDING:
-			slog.Warn("Download is in queue", "queuePosition", resp.NumberInQueue, "clientCount", resp.ClientCount, "message", resp.Message)
-
-		case pb.DownloadStatusType_VALIDATING:
-			slog.Info("Validating integrity...")
 		}
+	}
+
+	slog.Info("Download completed", "file", *output, "size", common.PrettyFormatSize(received))
+}
+
+func printProgress(resp *pb.DownloadStatus, totalSize int64, progressBar *progressbar.ProgressBar) {
+	if resp == nil {
+		return
+	}
+
+	if progressBar != nil {
+		progressBar.Update(float64(resp.GetTotalDownloadedBytes()) / float64(totalSize))
+	} else {
+		slog.Info(fmtProgress(resp, totalSize))
 	}
 }
 
 func fmtProgress(resp *pb.DownloadStatus, totalSize int64) string {
-	downloadedBytes := resp.GetTotalDownloadedBytes()
-	downloadedBytesStr := common.PrettyFormatSize(downloadedBytes)
-	totalSizeStr := common.PrettyFormatSize(totalSize)
-	speed := common.PrettyFormatSpeed(int(resp.GetSpeed()))
-	eta := common.PrettyFormatDuration(totalSize-downloadedBytes, resp.GetSpeed())
-	percentage :=
-		fmt.Sprintf("%.2f%%", float64(downloadedBytes)/float64(totalSize)*100)
-	return fmt.Sprintf("Downloading... [%s] %s/%s, speed: %s, ETA: %s", percentage, downloadedBytesStr, totalSizeStr, speed, eta)
+	if resp == nil {
+		return "..."
+	}
+
+	switch resp.GetStatus() {
+	case pb.DownloadStatusType_PENDING:
+		return fmt.Sprintf("Pending... %d in queue, %d clients connected, message: %s", resp.GetNumberInQueue(), resp.GetClientCount(), resp.GetMessage())
+
+	case pb.DownloadStatusType_VALIDATING:
+		return "Validating..."
+
+	case pb.DownloadStatusType_TRANSFERRING:
+		return fmt.Sprintf("Transferring... %s/%s", common.PrettyFormatSize(resp.GetTotalDownloadedBytes()), common.PrettyFormatSize(totalSize))
+
+	case pb.DownloadStatusType_DOWNLOADING:
+		downloadedBytes := resp.GetTotalDownloadedBytes()
+		downloadedBytesStr := common.PrettyFormatSize(downloadedBytes)
+		totalSizeStr := common.PrettyFormatSize(totalSize)
+		speed := common.PrettyFormatSpeed(int(resp.GetSpeed()))
+		eta := common.PrettyFormatDuration(totalSize-downloadedBytes, resp.GetSpeed())
+		percentage :=
+			fmt.Sprintf("%.2f%%", float64(downloadedBytes)/float64(totalSize)*100)
+		return fmt.Sprintf("Downloading... [%s] %s/%s, speed: %s, ETA: %s", percentage, downloadedBytesStr, totalSizeStr, speed, eta)
+
+	default:
+		return fmt.Sprintf("Status: %s", resp.GetStatus().String())
+	}
 }

@@ -1,6 +1,6 @@
 module progressbar
 
-go 1.24
+go 1.24.4
 
 require golang.org/x/term v0.32.0
 

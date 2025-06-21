@@ -1,6 +1,6 @@
 module pb
 
-go 1.23.3
+go 1.24.4
 
 require (
 	google.golang.org/grpc v1.72.1

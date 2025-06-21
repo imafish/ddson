@@ -1,8 +1,8 @@
 module persistency
 
-go 1.24
+go 1.24.4
 
-replace internal/database => ../../internal/database
+replace internal/database => ../database
 
 require internal/database v0.0.0
 

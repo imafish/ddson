@@ -7,7 +7,7 @@
 
 ## Problems
 
-1. [ ] Sometimes server stuck, with 1 unfinished subtask
+1. [x] Sometimes server stuck, with 1 unfinished subtask
 2. [ ] Should handle client abort.
 3. [ ] Should check if user is running daemon
 4. [ ] Should calculate speed accurately
@@ -31,6 +31,7 @@
 6. [ ] use a db to track saved files, and cache them.
 7. [ ] more commands:
    1. [ ] query
+      1. [ ] move to pending tasks to DB
    2. [ ] request
    3. [ ] download
    4. [ ] status

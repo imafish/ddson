@@ -102,6 +102,18 @@ func executeTask(task *taskInfo, server *server) {
 	}
 	slog.Info("File transfer completed", "file", completeFile)
 
+	// move the downloaded file to a temporary location, and save the path of taskInfo
+	tempFile, err := os.CreateTemp("", "downloaded_")
+	if err != nil {
+		slog.Error("Error creating temporary file for downloaded content", "error", err)
+	} else {
+		defer tempFile.Close()
+
+		os.Rename(completeFile, tempFile.Name())
+		slog.Info("Moved combined file to temporary location", "file", tempFile.Name())
+		task.downloadedFile = tempFile.Name()
+	}
+
 	task.state = taskState_COMPLETED
 }
 

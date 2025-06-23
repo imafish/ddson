@@ -3,9 +3,9 @@ package persistency
 import (
 	"database/sql"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
+	"path"
 	"time"
 
 	"internal/database"
@@ -16,8 +16,17 @@ type Persistency struct {
 	db      *sql.DB
 }
 
-func NewPersistency(baseDir string) (*Persistency, error) {
-	d, err := database.LoadDatabase(baseDir + "/downloaded_files.db")
+const downloadedFilesDir = "downloaded_files"
+const downloadedFilesDB = "downloaded_files.db"
+
+func NewAndInitializePersistency(baseDir string) (*Persistency, error) {
+	err := os.MkdirAll(path.Join(baseDir, downloadedFilesDir), 0755)
+	if err != nil {
+		slog.Error("Failed to create downloaded files directory", "path", path.Join(baseDir, downloadedFilesDir), "error", err)
+		return nil, fmt.Errorf("failed to create downloaded files directory: %w", err)
+	}
+
+	d, err := database.LoadDatabase(path.Join(baseDir, downloadedFilesDB))
 	if err != nil {
 		return nil, err
 	}
@@ -39,28 +48,42 @@ func (p *Persistency) GetPersistedFile(url string, sha256 string) (string, error
 	// if sha256 is provided, also check if it matches
 	persistedFile, err := database.GetDownloadedFileByOriginalURL(p.db, url)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return "", nil // no file found
-		}
 		slog.Error("Failed to get downloaded file by original URL", "url", url, "error", err)
-		return "", err
+	}
+	if persistedFile == nil {
+		slog.Debug("No persisted file found for URL", "url", url)
+		return "", nil
 	}
 	if sha256 != "" && persistedFile.SHA256 != sha256 {
 		slog.Warn("SHA256 mismatch for persisted file", "url", url, "expected_sha256", sha256, "actual_sha256", persistedFile.SHA256)
-		return "", fmt.Errorf("SHA256 mismatch for persisted file: expected %s, got %s", sha256, persistedFile.SHA256)
+		return "", nil
 	}
 
-	return persistedFile.PathOnDisk, nil
+	// check if the file exists on disk
+	fullPath := path.Join(p.baseDir, downloadedFilesDir, persistedFile.Filename)
+	if _, err := os.Stat(fullPath); err != nil {
+		return "", fmt.Errorf("file does not exist on disk: %w", err)
+	}
+
+	// TODO: skip verifying the file checksum for now
+
+	return fullPath, nil
 }
 
-func (p *Persistency) NewDownloadedFile(originalUrl string, file *os.File, sha256 string) error {
+func (p *Persistency) NewDownloadedFile(originalUrl string, downloadedFilePath string, sha256 string) error {
 	// first check if there is already a item with the same url
 	item, err := database.GetDownloadedFileByOriginalURL(p.db, originalUrl)
 	if err != nil && err != sql.ErrNoRows {
 		return err
 	}
 
+	file, err := os.Open(downloadedFilePath)
+	if err != nil {
+		slog.Error("Failed to open downloaded file", "path", downloadedFilePath, "error", err)
+		return err
+	}
 	fileInfo, err := file.Stat()
+	file.Close()
 	if err != nil {
 		slog.Error("Failed to get file info", "error", err)
 		return err
@@ -76,13 +99,16 @@ func (p *Persistency) NewDownloadedFile(originalUrl string, file *os.File, sha25
 	}
 
 	if shouldUpdate {
-		err = p.RemoveFileAndDbEntry(item)
-		if err != nil {
-			slog.Error("Failed to remove existing file and database entry", "error", err)
-			return err
+		if item != nil {
+			slog.Info("Updating existing downloaded file cache", "url", originalUrl, "existingPath", item.Filename, "newPath", downloadedFilePath)
+			err = p.RemoveFileAndDbEntry(item)
+			if err != nil {
+				slog.Error("Failed to remove existing file and database entry", "error", err)
+				return err
+			}
 		}
 
-		err = p.createNewDownloadedFileCache(originalUrl, file, fileInfo, sha256)
+		err = p.createNewDownloadedFileCache(originalUrl, downloadedFilePath, fileInfo, sha256)
 		if err != nil {
 			slog.Error("Failed to create new downloaded file cache", "error", err)
 			return err
@@ -96,10 +122,11 @@ func (p *Persistency) RemoveFileAndDbEntry(file *database.DownloadedFile) error 
 		return fmt.Errorf("file is nil, cannot remove")
 	}
 
+	absolutePath := path.Join(p.baseDir, downloadedFilesDir, file.Filename)
 	// remove file from disk
-	err := os.Remove(file.PathOnDisk)
+	err := os.Remove(absolutePath)
 	if err != nil {
-		slog.Error("Failed to remove file", "path", file.PathOnDisk, "error", err)
+		slog.Error("Failed to remove file", "path", absolutePath, "error", err)
 		return err
 	}
 
@@ -113,9 +140,9 @@ func (p *Persistency) RemoveFileAndDbEntry(file *database.DownloadedFile) error 
 	return nil
 }
 
-func (p *Persistency) createNewDownloadedFileCache(originalUrl string, file *os.File, fileInfo os.FileInfo, sha256 string) error {
+func (p *Persistency) createNewDownloadedFileCache(originalUrl string, downloadedFilePath string, fileInfo os.FileInfo, sha256 string) error {
 	// save the file to disk using a unique name
-	tempFile, err := os.CreateTemp(p.baseDir+"/downloaded_files", "file-*")
+	tempFile, err := os.CreateTemp(path.Join(p.baseDir, downloadedFilesDir), "file-*")
 	if err != nil {
 		slog.Error("Failed to create temporary file", "error", err)
 		return err
@@ -123,21 +150,17 @@ func (p *Persistency) createNewDownloadedFileCache(originalUrl string, file *os.
 	defer tempFile.Close()
 
 	pathOnDisk := tempFile.Name()
-	_, err = file.Seek(0, 0) // Reset file pointer to the beginning
+	err = os.Rename(downloadedFilePath, pathOnDisk)
 	if err != nil {
-		slog.Error("Failed to reset file pointer", "error", err)
+		slog.Error("Failed to move downloaded file to final location", "source", downloadedFilePath, "destination", pathOnDisk, "error", err)
 		return err
 	}
 
-	_, err = io.Copy(tempFile, file)
-	if err != nil {
-		slog.Error("Failed to copy file contents", "error", err)
-		return err
-	}
+	filename := path.Base(pathOnDisk)
 
 	downloadedFile := database.DownloadedFile{
 		OriginalURL: originalUrl,
-		PathOnDisk:  pathOnDisk,
+		Filename:    filename,
 		Size:        fileInfo.Size(),
 		SHA256:      sha256,
 		LastUsed:    time.Now(),
@@ -149,5 +172,10 @@ func (p *Persistency) createNewDownloadedFileCache(originalUrl string, file *os.
 		return err
 	}
 
+	slog.Info("New downloaded file cache created",
+		"url", originalUrl,
+		"filename", filename,
+		"size", fileInfo.Size(),
+		"sha256", sha256)
 	return nil
 }

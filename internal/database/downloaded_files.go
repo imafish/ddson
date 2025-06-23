@@ -2,11 +2,13 @@ package database
 
 import (
 	"database/sql"
+	"log/slog"
 	"time"
 
 	"log"
 
-	_ "github.com/mattn/go-sqlite3"
+	// _ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite" // Use modernc.org/sqlite for better compatibility
 )
 
 // DownloadedFile represents a file downloaded and stored in the database.
@@ -16,7 +18,7 @@ type DownloadedFile struct {
 	LastUsed    time.Time `db:"last_used"`
 	Size        int64     `db:"size"`
 	SHA256      string    `db:"sha256"`
-	PathOnDisk  string    `db:"path_on_disk"`
+	Filename    string    `db:"filename"`
 	Created     time.Time `db:"created"`
 }
 
@@ -28,7 +30,7 @@ func CreateTable(db *sql.DB) error {
 		original_url TEXT NOT NULL,
 		size INTEGER NOT NULL,
 		sha256 TEXT NOT NULL,
-		path_on_disk TEXT NOT NULL,
+		filename TEXT NOT NULL,
 		last_used DATETIME NOT NULL,
 		created DATETIME NOT NULL
 	);`
@@ -45,7 +47,7 @@ func CreateTable(db *sql.DB) error {
 // GetAllDownloadedFiles retrieves all DownloadedFile entries from the database.
 func GetAllDownloadedFiles(db *sql.DB) ([]DownloadedFile, error) {
 	query := `
-	SELECT id, original_url, size, sha256, path_on_disk, last_used, created
+	SELECT id, original_url, size, sha256, filename, last_used, created
 	FROM downloaded_files;`
 
 	rows, err := db.Query(query)
@@ -58,7 +60,7 @@ func GetAllDownloadedFiles(db *sql.DB) ([]DownloadedFile, error) {
 	var files []DownloadedFile
 	for rows.Next() {
 		var file DownloadedFile
-		err := rows.Scan(&file.Id, &file.OriginalURL, &file.Size, &file.SHA256, &file.PathOnDisk, &file.LastUsed, &file.Created)
+		err := rows.Scan(&file.Id, &file.OriginalURL, &file.Size, &file.SHA256, &file.Filename, &file.LastUsed, &file.Created)
 		if err != nil {
 			log.Printf("Failed to scan row: %v", err)
 			return nil, err
@@ -77,19 +79,16 @@ func GetAllDownloadedFiles(db *sql.DB) ([]DownloadedFile, error) {
 // GetDownloadedFileByOriginalURL retrieves a DownloadedFile by its original URL.
 func GetDownloadedFileByOriginalURL(db *sql.DB, originalURL string) (*DownloadedFile, error) {
 	query := `
-	SELECT id, original_url, size, sha256, path_on_disk, last_used, created
+	SELECT id, original_url, size, sha256, filename, last_used, created
 	FROM downloaded_files
 	WHERE original_url = ?;`
 
 	row := db.QueryRow(query, originalURL)
 
 	var file DownloadedFile
-	err := row.Scan(&file.Id, &file.OriginalURL, &file.Size, &file.SHA256, &file.PathOnDisk, &file.LastUsed, &file.Created)
+	err := row.Scan(&file.Id, &file.OriginalURL, &file.Size, &file.SHA256, &file.Filename, &file.LastUsed, &file.Created)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		log.Printf("Failed to retrieve downloaded file by original URL: %v", err)
+		slog.Error("Failed to retrieve downloaded file by original URL", "url", originalURL, "error", err)
 		return nil, err
 	}
 
@@ -99,11 +98,11 @@ func GetDownloadedFileByOriginalURL(db *sql.DB, originalURL string) (*Downloaded
 // InsertDownloadedFile inserts a new DownloadedFile into the database.
 func InsertDownloadedFile(db *sql.DB, file *DownloadedFile) (int64, error) {
 	query := `
-	INSERT INTO downloaded_files (original_url, size, sha256, path_on_disk, last_used, created)
+	INSERT INTO downloaded_files (original_url, size, sha256, filename, last_used, created)
 	VALUES (?, ?, ?, ?, ?, ?);`
 
 	created := time.Now()
-	result, err := db.Exec(query, file.OriginalURL, file.Size, file.SHA256, file.PathOnDisk, file.LastUsed, created)
+	result, err := db.Exec(query, file.OriginalURL, file.Size, file.SHA256, file.Filename, file.LastUsed, created)
 	if err != nil {
 		log.Printf("Failed to insert downloaded file: %v", err)
 		return 0, err
@@ -124,14 +123,14 @@ func InsertDownloadedFile(db *sql.DB, file *DownloadedFile) (int64, error) {
 // GetDownloadedFile retrieves a DownloadedFile by its ID.
 func GetDownloadedFile(db *sql.DB, id int64) (*DownloadedFile, error) {
 	query := `
-	SELECT id, original_url, size, sha256, path_on_disk, last_used, created
+	SELECT id, original_url, size, sha256, filename, last_used, created
 	FROM downloaded_files
 	WHERE id = ?;`
 
 	row := db.QueryRow(query, id)
 
 	var file DownloadedFile
-	err := row.Scan(&file.Id, &file.OriginalURL, &file.Size, &file.SHA256, &file.PathOnDisk, &file.LastUsed, &file.Created)
+	err := row.Scan(&file.Id, &file.OriginalURL, &file.Size, &file.SHA256, &file.Filename, &file.LastUsed, &file.Created)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -147,10 +146,10 @@ func GetDownloadedFile(db *sql.DB, id int64) (*DownloadedFile, error) {
 func UpdateDownloadedFile(db *sql.DB, file *DownloadedFile) error {
 	query := `
 	UPDATE downloaded_files
-	SET original_url = ?, size = ?, sha256 = ?, path_on_disk = ?, last_used = ?
+	SET original_url = ?, size = ?, sha256 = ?, filename = ?, last_used = ?
 	WHERE id = ?;`
 
-	_, err := db.Exec(query, file.OriginalURL, file.Size, file.SHA256, file.PathOnDisk, file.LastUsed, file.Id)
+	_, err := db.Exec(query, file.OriginalURL, file.Size, file.SHA256, file.Filename, file.LastUsed, file.Id)
 	if err != nil {
 		log.Printf("Failed to update downloaded file: %v", err)
 		return err

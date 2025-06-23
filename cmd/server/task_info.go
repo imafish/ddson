@@ -24,9 +24,10 @@ type taskInfo struct {
 	checksum    string
 	stream      pb.DDSONService_DownloadServer
 
-	mtx      *sync.Mutex // Mutex to protect access to the task states
-	state    taskState
-	subtasks []*subTaskInfo
+	mtx            *sync.Mutex // Mutex to protect access to the task states
+	state          taskState
+	subtasks       []*subTaskInfo
+	downloadedFile string // path to the downloaded file, if any
 
 	err      error
 	quitFlag bool // used to signal subtasks to stop processing

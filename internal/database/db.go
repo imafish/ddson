@@ -2,14 +2,17 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 
-	_ "github.com/mattn/go-sqlite3"
+	// _ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite" // Use modernc.org/sqlite for better compatibility
 )
 
 // LoadDatabase initializes a connection to the SQLite database.
 func LoadDatabase(dbPath string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", dbPath)
+	command := fmt.Sprintf("file:%s", dbPath)
+	db, err := sql.Open("sqlite", command)
 	if err != nil {
 		log.Printf("Failed to open database: %v", err)
 		return nil, err

@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/keepalive"
 
 	"internal/agents"
+	"internal/common"
 	"internal/logging"
 	"internal/pb"
 	"internal/persistency"
@@ -27,10 +28,23 @@ type server struct {
 }
 
 func newServer() *server {
+	homeDir, err := common.OriginalUserHomeDir()
+	if err != nil {
+		slog.Error("failed to get original user home directory", "error", err)
+		os.Exit(1)
+	}
+	workspaceDir := fmt.Sprintf("%s/workspace_ddson", homeDir)
+	p, err := persistency.NewAndInitializePersistency(workspaceDir)
+	if err != nil {
+		slog.Error("failed to create persistency", "error", err)
+		os.Exit(1)
+	}
+
 	return &server{
 		agentList:       agents.NewAgentList(),
 		taskList:        newTaskList(),
 		heartbeatTimers: make(map[int]*time.Timer),
+		persistency:     p,
 	}
 }
 

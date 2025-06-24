@@ -30,6 +30,7 @@
 5. [ ] move supporting go code to a separate git repository, so they can be shared across project.
 6. [ ] fail a subtask if it is too slow (timeout)
 7. [x] use a db to track saved files, and cache them.
+   1. [x] remove old cache items.
 8. [ ] more commands:
    1. [ ] query
       1. [ ] move to pending tasks to DB

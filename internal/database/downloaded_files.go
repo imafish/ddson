@@ -60,9 +60,9 @@ func CreateTable(db *sql.DB) error {
 //
 // Returns:
 //
-//	[]DownloadedFile - a slice of all DownloadedFile records found.
+//	[]*DownloadedFile - a slice of all DownloadedFile records found.
 //	error            - non-nil if the query or scan fails, otherwise nil.
-func GetAllDownloadedFiles(db *sql.DB) ([]DownloadedFile, error) {
+func GetAllDownloadedFiles(db *sql.DB) ([]*DownloadedFile, error) {
 	query := `
 	SELECT id, original_url, size, sha256, filename, last_used, created
 	FROM downloaded_files;`
@@ -74,7 +74,7 @@ func GetAllDownloadedFiles(db *sql.DB) ([]DownloadedFile, error) {
 	}
 	defer rows.Close()
 
-	var files []DownloadedFile
+	var files []*DownloadedFile
 	for rows.Next() {
 		var file DownloadedFile
 		err := rows.Scan(&file.Id, &file.OriginalURL, &file.Size, &file.SHA256, &file.Filename, &file.LastUsed, &file.Created)
@@ -82,7 +82,7 @@ func GetAllDownloadedFiles(db *sql.DB) ([]DownloadedFile, error) {
 			log.Printf("Failed to scan row: %v", err)
 			return nil, err
 		}
-		files = append(files, file)
+		files = append(files, &file)
 	}
 
 	if err := rows.Err(); err != nil {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"log/slog"
+	"time"
 
 	"internal/pb"
 )
@@ -31,11 +32,10 @@ func (s *server) Download(req *pb.DownloadRequest, stream pb.DDSONService_Downlo
 	} else if cached != "" {
 		slog.Info("File is cached, sending cached file", "url", req.GetUrl(), "cachedPath", cached)
 		// Send file content from cache
-
 		// transferFileData is from distributed_download.go, consider moving this method to a common place
 		return transferFileData(stream, cached)
 	} else {
-		slog.Info("File is not cached, proceeding with download", "url", req.GetUrl())
+		slog.Info("File is not cached, proceed with download", "url", req.GetUrl())
 	}
 
 	// Create a task and add it to task list
@@ -53,10 +53,19 @@ func (s *server) Download(req *pb.DownloadRequest, stream pb.DDSONService_Downlo
 	// save the downloaded file to persistency
 	if taskInfo.downloadedFile != "" {
 		slog.Info("Saving downloaded file to persistency", "path", taskInfo.downloadedFile)
-		err = s.persistency.NewDownloadedFile(req.GetUrl(), taskInfo.downloadedFile, req.GetChecksum())
+		err = s.persistency.AddDownloadedFile(req.GetUrl(), taskInfo.downloadedFile, req.GetChecksum())
 		if err != nil {
 			slog.Error("Failed to save downloaded file", "url", req.GetUrl(), "error", err)
 		}
+	} else {
+		slog.Debug("No need to update persistency")
+	}
+
+	// cleanup persistency
+	slog.Debug("Cleaning up persistency")
+	err = s.persistency.Cleanup(time.Second*60*60*24*16, 100*1024*1024*1024, 200*1024*1024*1024) // 16 days, 100 GB, 200 GB
+	if err != nil {
+		slog.Warn("Failed to cleanup persistency", "error", err)
 	}
 
 	slog.Info("Task is done", "url", req.GetUrl())

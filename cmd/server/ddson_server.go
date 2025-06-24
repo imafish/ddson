@@ -66,7 +66,7 @@ func main() {
 
 	// if stdout is a terminal, use colorized output, otherwise use plain text
 	useColor := term.IsTerminal(int(os.Stdout.Fd()))
-	logger = logging.NewCustomLogger(os.Stdout, logLevel, useColor)
+	logger = logging.NewCustomLogger(logLevel, useColor, "")
 	slog.SetDefault(logger)
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))

@@ -28,11 +28,12 @@ var (
 	forceDaemon  = flag.Bool("force", false, "force daemonize even if pidfile exists (default: false)")
 	stopDaemon   = flag.Bool("stop", false, "stop the daemon process (default: false)")
 	printVersion = flag.Bool("version", false, "print version information and exit")
+	logfile      = flag.String("logfile", "", "the log file to write logs to (default: empty)")
 )
 
 const (
-	pidfile = "/var/run/ddson.pid"
-	logfile = "/var/log/ddson.log"
+	pidfile        = "/var/run/ddson.pid"
+	defaultLogfile = "/var/log/ddson.log"
 )
 
 func main() {
@@ -41,6 +42,11 @@ func main() {
 	if *printVersion {
 		fmt.Println(version.VersionString)
 		return
+	}
+
+	if *daemonize && *logfile == defaultLogfile {
+		fmt.Fprintf(os.Stderr, "Please do not use default log file %s for daemon mode", defaultLogfile)
+		os.Exit(1)
 	}
 
 	// Set up slog logger
@@ -53,8 +59,8 @@ func main() {
 		loglevel = slog.LevelDebug - 1
 	}
 	// if stdout is a terminal, use colorized output, otherwise use plain text
-	useColor := term.IsTerminal(int(os.Stdout.Fd()))
-	logger = logging.NewCustomLogger(os.Stdout, loglevel, useColor)
+	useColor := term.IsTerminal(int(os.Stdout.Fd())) && !*daemonize
+	logger = logging.NewCustomLogger(loglevel, useColor, *logfile)
 	slog.SetDefault(logger)
 
 	slog.Info("Starting ddson client", "args", os.Args, "version", version.VersionString)
@@ -131,7 +137,7 @@ func doDaemonize(force bool) error {
 		return fmt.Errorf("pidfile %s already exists, use --force to overwrite or stop the existing daemon first", pidfile)
 	}
 
-	err := common.Daemonize(pidfile, logfile)
+	err := common.Daemonize(pidfile, defaultLogfile)
 	if err != nil {
 		return err
 	}

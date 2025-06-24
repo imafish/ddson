@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"strings"
+
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 // Colors for terminal output
@@ -143,12 +146,23 @@ func (h *CustomHandler) WithGroup(name string) slog.Handler {
 }
 
 // NewCustomLogger creates a new logger with our custom format
-func NewCustomLogger(w io.Writer, level slog.Level, isColorful bool) *slog.Logger {
+func NewCustomLogger(level slog.Level, isColorful bool, logfile string) *slog.Logger {
 	var colorsToUse *colors
 	if isColorful {
 		colorsToUse = &defaultColors
 	} else {
 		colorsToUse = &nocolorColors
+	}
+
+	var w io.Writer = os.Stdout
+	if logfile != "" {
+		w = &lumberjack.Logger{
+			Filename:   logfile,
+			MaxSize:    100,  // MB
+			MaxBackups: 3,    // number of backups
+			MaxAge:     28,   // days
+			Compress:   true, // compress rotated files
+		}
 	}
 
 	handler := &CustomHandler{

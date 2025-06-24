@@ -39,16 +39,19 @@ func Daemonize(pidfile string, logfile string) error {
 		stderrFd = nullFileFd
 	)
 
-	if logfile != "" {
-		var logFilePtr *os.File
-		logFilePtr, err = os.OpenFile(logfile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-		if err != nil {
-			return fmt.Errorf("failed to open logfile %s: %v", logfile, err)
-		}
-		defer logFilePtr.Close()
-		stdoutFd = logFilePtr.Fd()
-		stderrFd = logFilePtr.Fd()
-	}
+	// if logfile != "" {
+	// 	var logFilePtr *os.File
+	// 	logFilePtr, err = os.OpenFile(logfile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	// 	if err != nil {
+	// 		return fmt.Errorf("failed to open logfile %s: %v", logfile, err)
+	// 	}
+	// 	defer logFilePtr.Close()
+	// 	stdoutFd = logFilePtr.Fd()
+	// 	stderrFd = logFilePtr.Fd()
+	// }
+
+	// TODO: to use systemd styled daemonization, we should log to stdout and stderr
+	// For now, we'll use lumberjack to directly log to a file.
 
 	commandline := os.Args[0]
 	args := make([]string, 0, len(os.Args))
@@ -58,14 +61,17 @@ func Daemonize(pidfile string, logfile string) error {
 		case "-d", "--d":
 		case "--force", "-f":
 		case "--pidfile":
-		case "--logfile":
+		// case "--logfile":
+		// case logfile:
 		case pidfile:
-		case logfile:
 			continue // Skip these arguments
 		default:
 			args = append(args, arg)
 		}
 	}
+
+	args = append(args, "--logfile", logfile)
+
 	slog.Debug("Daemonizing process",
 		"commandline", commandline,
 		"args", args)

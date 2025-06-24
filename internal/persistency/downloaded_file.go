@@ -71,12 +71,6 @@ func (p *Persistency) GetPersistedFile(url string, sha256 string) (string, error
 }
 
 func (p *Persistency) NewDownloadedFile(originalUrl string, downloadedFilePath string, sha256 string) error {
-	// first check if there is already a item with the same url
-	item, err := database.GetDownloadedFileByOriginalURL(p.db, originalUrl)
-	if err != nil && err != sql.ErrNoRows {
-		return err
-	}
-
 	file, err := os.Open(downloadedFilePath)
 	if err != nil {
 		slog.Error("Failed to open downloaded file", "path", downloadedFilePath, "error", err)
@@ -90,6 +84,7 @@ func (p *Persistency) NewDownloadedFile(originalUrl string, downloadedFilePath s
 	}
 
 	shouldUpdate := false
+	item, _ := database.GetDownloadedFileByOriginalURL(p.db, originalUrl)
 	if item == nil {
 		shouldUpdate = true
 	} else {
@@ -113,7 +108,10 @@ func (p *Persistency) NewDownloadedFile(originalUrl string, downloadedFilePath s
 			slog.Error("Failed to create new downloaded file cache", "error", err)
 			return err
 		}
+	} else {
+		slog.Debug("No update needed for downloaded file cache", "url", originalUrl, "filename", item.Filename)
 	}
+
 	return nil
 }
 
@@ -147,13 +145,21 @@ func (p *Persistency) createNewDownloadedFileCache(originalUrl string, downloade
 		slog.Error("Failed to create temporary file", "error", err)
 		return err
 	}
-	defer tempFile.Close()
+	tempFile.Close()
 
+	slog.Debug("Moving downloaded file to final location", "source", downloadedFilePath, "destination", tempFile.Name())
 	pathOnDisk := tempFile.Name()
 	err = os.Rename(downloadedFilePath, pathOnDisk)
 	if err != nil {
 		slog.Error("Failed to move downloaded file to final location", "source", downloadedFilePath, "destination", pathOnDisk, "error", err)
 		return err
+	}
+
+	stat2, err := os.Stat(pathOnDisk)
+	if err != nil {
+		slog.Error("Failed to stat moved file", "path", pathOnDisk, "error", err)
+	} else {
+		slog.Debug("Moved file info", "path", pathOnDisk, "size", stat2.Size(), "mode", stat2.Mode(), "modTime", stat2.ModTime())
 	}
 
 	filename := path.Base(pathOnDisk)

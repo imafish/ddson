@@ -23,6 +23,14 @@ type DownloadedFile struct {
 }
 
 // CreateTable creates the downloaded_files table if it does not exist.
+//
+// Input:
+//
+//	db - a pointer to an open sql.DB connection.
+//
+// Returns:
+//
+//	error - non-nil if the table creation fails, otherwise nil.
 func CreateTable(db *sql.DB) error {
 	query := `
 	CREATE TABLE IF NOT EXISTS downloaded_files (
@@ -45,6 +53,15 @@ func CreateTable(db *sql.DB) error {
 }
 
 // GetAllDownloadedFiles retrieves all DownloadedFile entries from the database.
+//
+// Input:
+//
+//	db - a pointer to an open sql.DB connection.
+//
+// Returns:
+//
+//	[]DownloadedFile - a slice of all DownloadedFile records found.
+//	error            - non-nil if the query or scan fails, otherwise nil.
 func GetAllDownloadedFiles(db *sql.DB) ([]DownloadedFile, error) {
 	query := `
 	SELECT id, original_url, size, sha256, filename, last_used, created
@@ -77,6 +94,16 @@ func GetAllDownloadedFiles(db *sql.DB) ([]DownloadedFile, error) {
 }
 
 // GetDownloadedFileByOriginalURL retrieves a DownloadedFile by its original URL.
+//
+// Input:
+//
+//	db          - a pointer to an open sql.DB connection.
+//	originalURL - the original URL string to search for.
+//
+// Returns:
+//
+//	*DownloadedFile - pointer to the found DownloadedFile, or nil if not found.
+//	error           - non-nil if the query or scan fails, otherwise nil.
 func GetDownloadedFileByOriginalURL(db *sql.DB, originalURL string) (*DownloadedFile, error) {
 	query := `
 	SELECT id, original_url, size, sha256, filename, last_used, created
@@ -88,6 +115,9 @@ func GetDownloadedFileByOriginalURL(db *sql.DB, originalURL string) (*Downloaded
 	var file DownloadedFile
 	err := row.Scan(&file.Id, &file.OriginalURL, &file.Size, &file.SHA256, &file.Filename, &file.LastUsed, &file.Created)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // No file found with the given URL
+		}
 		slog.Error("Failed to retrieve downloaded file by original URL", "url", originalURL, "error", err)
 		return nil, err
 	}
@@ -96,6 +126,16 @@ func GetDownloadedFileByOriginalURL(db *sql.DB, originalURL string) (*Downloaded
 }
 
 // InsertDownloadedFile inserts a new DownloadedFile into the database.
+//
+// Input:
+//
+//	db   - a pointer to an open sql.DB connection.
+//	file - pointer to a DownloadedFile struct to insert (Id and Created will be set).
+//
+// Returns:
+//
+//	int64 - the ID of the newly inserted record.
+//	error - non-nil if the insert fails, otherwise nil.
 func InsertDownloadedFile(db *sql.DB, file *DownloadedFile) (int64, error) {
 	query := `
 	INSERT INTO downloaded_files (original_url, size, sha256, filename, last_used, created)
@@ -121,6 +161,16 @@ func InsertDownloadedFile(db *sql.DB, file *DownloadedFile) (int64, error) {
 }
 
 // GetDownloadedFile retrieves a DownloadedFile by its ID.
+//
+// Input:
+//
+//	db - a pointer to an open sql.DB connection.
+//	id - the ID of the DownloadedFile to retrieve.
+//
+// Returns:
+//
+//	*DownloadedFile - pointer to the found DownloadedFile, or nil if not found.
+//	error           - non-nil if the query or scan fails, otherwise nil.
 func GetDownloadedFile(db *sql.DB, id int64) (*DownloadedFile, error) {
 	query := `
 	SELECT id, original_url, size, sha256, filename, last_used, created
@@ -143,6 +193,15 @@ func GetDownloadedFile(db *sql.DB, id int64) (*DownloadedFile, error) {
 }
 
 // UpdateDownloadedFile updates an existing DownloadedFile in the database.
+//
+// Input:
+//
+//	db   - a pointer to an open sql.DB connection.
+//	file - pointer to a DownloadedFile struct with updated fields (must include valid Id).
+//
+// Returns:
+//
+//	error - non-nil if the update fails, otherwise nil.
 func UpdateDownloadedFile(db *sql.DB, file *DownloadedFile) error {
 	query := `
 	UPDATE downloaded_files
@@ -159,6 +218,15 @@ func UpdateDownloadedFile(db *sql.DB, file *DownloadedFile) error {
 }
 
 // DeleteDownloadedFile removes a DownloadedFile from the database by its ID.
+//
+// Input:
+//
+//	db - a pointer to an open sql.DB connection.
+//	id - the ID of the DownloadedFile to delete.
+//
+// Returns:
+//
+//	error - non-nil if the deletion fails, otherwise nil.
 func DeleteDownloadedFile(db *sql.DB, id int64) error {
 	query := `
 	DELETE FROM downloaded_files

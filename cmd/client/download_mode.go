@@ -123,8 +123,20 @@ func printProgress(resp *pb.DownloadStatus, totalSize int64, progressBar *progre
 		return
 	}
 
+	var progress float64 = 0.0
+	switch resp.GetStatus() {
+	case pb.DownloadStatusType_PENDING:
+		progress = 0.0
+	case pb.DownloadStatusType_VALIDATING:
+		progress = 1.0
+	case pb.DownloadStatusType_TRANSFERRING:
+		progress = 1.0
+	case pb.DownloadStatusType_DOWNLOADING:
+		progress = float64(resp.GetTotalDownloadedBytes()) / float64(totalSize)
+	}
+
 	if progressBar != nil {
-		progressBar.Update(float64(resp.GetTotalDownloadedBytes()) / float64(totalSize))
+		progressBar.Update(progress)
 	} else {
 		slog.Info(fmtProgress(resp, totalSize))
 	}

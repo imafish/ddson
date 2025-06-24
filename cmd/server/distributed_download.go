@@ -94,6 +94,7 @@ func executeTask(task *taskInfo, server *server) {
 		slog.Info("No checksum provided, skipping validation")
 	}
 
+	defer os.Remove(completeFile) // Clean up combined file after transfer
 	err = transferFileData(task.stream, completeFile)
 	if err != nil {
 		slog.Error("Error transferring file data", "error", err)
@@ -289,7 +290,6 @@ func transferFileData(stream pb.DDSONService_DownloadServer, filePath string) er
 		return err
 	}
 	defer file.Close()
-	defer os.Remove(filePath) // Clean up after sending
 
 	fileStat, err := file.Stat()
 	if err != nil {

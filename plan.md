@@ -26,10 +26,11 @@
    3. [ ] Reload config on `SIGHUP`
    4. [ ] A config file for systemd system.
 3. [ ] handle SIGTERM to shutdown gracefully
-4. [ ] move supporting go code to a separate git repository, so they can be shared across project.
-5. [ ] fail a subtask if it is too slow (timeout)
-6. [ ] use a db to track saved files, and cache them.
-7. [ ] more commands:
+4. [ ] logging: compress, size limit, etc.
+5. [ ] move supporting go code to a separate git repository, so they can be shared across project.
+6. [ ] fail a subtask if it is too slow (timeout)
+7. [x] use a db to track saved files, and cache them.
+8. [ ] more commands:
    1. [ ] query
       1. [ ] move to pending tasks to DB
    2. [ ] request

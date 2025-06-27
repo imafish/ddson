@@ -18,14 +18,6 @@ func Daemonize(pidfile string, logfile string) error {
 		return fmt.Errorf("pidfile %s already exists", pidfile)
 	}
 
-	// create the pidfile
-	// TODO: should open file exclusively
-	pidFile, err := os.Create(pidfile)
-	if err != nil {
-		return fmt.Errorf("failed to create pidfile %s: %v", pidfile, err)
-	}
-	defer pidFile.Close()
-
 	var nullFileFd uintptr = 0
 	nullFile, err := os.OpenFile(os.DevNull, os.O_RDWR, 0644)
 	if err != nil {
@@ -53,7 +45,10 @@ func Daemonize(pidfile string, logfile string) error {
 	// TODO: to use systemd styled daemonization, we should log to stdout and stderr
 	// For now, we'll use lumberjack to directly log to a file.
 
-	commandline := os.Args[0]
+	commandline, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("failed to get absolute executable path: %v", err)
+	}
 	args := make([]string, 0, len(os.Args))
 	for _, arg := range os.Args {
 		switch arg {
@@ -97,7 +92,13 @@ func Daemonize(pidfile string, logfile string) error {
 		return fmt.Errorf("failed to fork process: %v", err)
 	}
 
-	// Write the PID to the pidfile
+	// Create the pidfile and write the PID to it
+	// TODO: should open file exclusively
+	pidFile, err := os.Create(pidfile)
+	if err != nil {
+		return fmt.Errorf("failed to create pidfile %s: %v", pidfile, err)
+	}
+	defer pidFile.Close()
 	_, err = pidFile.WriteString(fmt.Sprintf("%d", pid))
 	if err != nil {
 		return fmt.Errorf("failed to write PID to pidfile %s: %v", pidfile, err)

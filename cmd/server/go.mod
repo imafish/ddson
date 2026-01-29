@@ -20,7 +20,7 @@ require (
 	internal/common v0.0.0
 	internal/httputil v0.0.0
 	internal/logging v0.0.0
-	internal/pb v0.0.0
+	internal/pb v0.0.0-00010101000000-000000000000
 	internal/persistency v0.0.0
 	internal/version v0.0.0
 )

@@ -25,6 +25,7 @@ type server struct {
 	taskList        *taskList
 	heartbeatTimers map[int]*time.Timer
 	persistency     *persistency.Persistency
+	errorHandler    *ErrorHandler
 }
 
 func newServer() *server {
@@ -40,11 +41,13 @@ func newServer() *server {
 		os.Exit(1)
 	}
 
+	agentList := agents.NewAgentList()
 	return &server{
-		agentList:       agents.NewAgentList(),
+		agentList:       agentList,
 		taskList:        newTaskList(),
 		heartbeatTimers: make(map[int]*time.Timer),
 		persistency:     p,
+		errorHandler:    NewErrorHandlerWithDefaults(agentList),
 	}
 }
 

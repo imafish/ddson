@@ -249,10 +249,10 @@ func executeSubTasks(task *taskInfo, server *server) error {
 	debugFinishedTasks := make([]int, totalSubTasks)
 
 	for _, subTask := range task.subtasks {
-		go subTask.execute(server, &task.quitFlag, finishChan)
+		go subTask.execute(task, server, finishChan)
 	}
 
-	var err error
+	var firstErr error
 	for subtaskID := range finishChan {
 		finishedSubTasks++
 		debugFinishedTasks[subtaskID] = 1 // for debugging purposes
@@ -262,13 +262,11 @@ func executeSubTasks(task *taskInfo, server *server) error {
 		slog.Info("Subtask completed", "subtaskID", subtaskID, "finishedSubTasks", finishedSubTasks)
 		// TODO: subtaskID is also the index in the subtasks slice. Consider using a map?
 		subTask := task.subtasks[subtaskID]
-		if subTask.err != nil {
-			if err == nil {
-				// only set the first error
-				err = subTask.err
-			}
+		if subTask.err != nil && firstErr == nil {
+			// Track the first error for return value
+			// Note: task failure is already handled by the error handler in execute()
+			firstErr = subTask.err
 			slog.Error("Subtask failed", "subtaskID", subTask.id, "error", subTask.err)
-			task.setError(err)
 		}
 
 		// always wait for all subtasks to finish, even if one fails
@@ -280,7 +278,10 @@ func executeSubTasks(task *taskInfo, server *server) error {
 		}
 	}
 
-	return err
+	// Cleanup error stats for this task
+	server.errorHandler.CleanupTask(task.id)
+
+	return firstErr
 }
 
 func transferFileData(stream pb.DDSONService_DownloadServer, filePath string) error {

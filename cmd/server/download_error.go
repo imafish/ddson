@@ -8,22 +8,9 @@ type ErrorCode int
 
 const (
 	// Connection errors (1xx)
-	ErrCodeConnectionFailed ErrorCode = iota + 100
-	ErrCodeConnectionTimeout
-	ErrCodeConnectionReset
-	ErrCodeTooManyRedirects
-	ErrCodeSSLHandshakeFailed
+	ErrCodeHTTPError ErrorCode = iota + 100
 
-	// HTTP errors (2xx)
-	ErrCodeHTTPUnauthorized ErrorCode = iota + 200
-	ErrCodeHTTPForbidden
-	ErrCodeHTTPNotFound
-	ErrCodeHTTPServerError
-	ErrCodeHTTPBadRequest
-	ErrCodeHTTPTooManyRequests
-
-	// Download operation errors (3xx)
-	ErrCodeDownloadFailed ErrorCode = iota + 300
+	ErrCodeUnknownDownloadError ErrorCode = iota + 200
 	ErrCodeDownloadCancelled
 	ErrCodeDownloadInterrupted
 	ErrCodePartialDownloadFailed
@@ -31,9 +18,7 @@ const (
 	ErrCodeChecksumMismatch
 	ErrCodeFileSizeMismatch
 	ErrCodeRangeNotSupported
-
-	// File system errors (4xx)
-	ErrCodeInsufficientSpace ErrorCode = iota + 400
+	ErrCodeInsufficientSpace
 	ErrCodeWriteFailed
 	ErrCodeReadFailed
 	ErrCodeFileCreateFailed
@@ -93,23 +78,8 @@ const (
 
 // errorMessages maps error codes to their human-readable messages
 var errorMessages = map[ErrorCode]string{
-	// Connection errors
-	ErrCodeConnectionFailed:   "failed to establish connection to remote server",
-	ErrCodeConnectionTimeout:  "connection timed out",
-	ErrCodeConnectionReset:    "connection reset by peer",
-	ErrCodeTooManyRedirects:   "too many redirects",
-	ErrCodeSSLHandshakeFailed: "SSL/TLS handshake failed",
-
-	// HTTP errors
-	ErrCodeHTTPUnauthorized:    "unauthorized: authentication required",
-	ErrCodeHTTPForbidden:       "forbidden: access denied",
-	ErrCodeHTTPNotFound:        "file not found on remote server",
-	ErrCodeHTTPServerError:     "remote server returned an error",
-	ErrCodeHTTPBadRequest:      "bad request",
-	ErrCodeHTTPTooManyRequests: "too many requests: rate limited",
-
-	// Download operation errors
-	ErrCodeDownloadFailed:        "download failed",
+	ErrCodeHTTPError:             "HTTP error occurred",
+	ErrCodeUnknownDownloadError:  "unknown download error",
 	ErrCodeDownloadCancelled:     "download cancelled by user",
 	ErrCodeDownloadInterrupted:   "download interrupted",
 	ErrCodePartialDownloadFailed: "partial download failed",
@@ -195,28 +165,6 @@ func (e ErrorCode) IsDownloadError() bool {
 	return e >= 100 && e < 600
 }
 
-// IsRetryable returns true if the error code is potentially retryable
-// If not retryable, the error is considered fatal
-func (e ErrorCode) IsRetryable() bool {
-	switch e {
-	// Download retryable errors
-	case ErrCodeConnectionTimeout,
-		ErrCodeConnectionReset,
-		ErrCodeHTTPTooManyRequests,
-		ErrCodeDownloadInterrupted,
-		ErrCodeHTTPServerError,
-		// gRPC retryable errors
-		ErrCodeGRPCConnectionTimeout,
-		ErrCodeGRPCUnavailable,
-		ErrCodeGRPCDeadlineExceeded,
-		ErrCodeGRPCResourceExhausted,
-		ErrCodeAgentNotResponding,
-		ErrCodeAgentBusy:
-		return true
-	}
-	return false
-}
-
 // DownloadError wraps an error with additional context about the download or gRPC operation
 type DownloadError struct {
 	URL      string
@@ -268,7 +216,24 @@ func (e *DownloadError) IsDownloadError() bool {
 // IsRetryable returns true if the error is potentially retryable
 // If not retryable, the error is considered fatal
 func (e *DownloadError) IsRetryable() bool {
-	return e.Code.IsRetryable()
+	switch e.Code {
+	case ErrCodeHTTPError:
+		switch e.HTTPCode {
+		case 400, 401, 403, 404, 405, 411, 412, 413, 414, 415, 416, 417, 422, 426, 428, 429, 431, 451:
+			return true
+		}
+		return false
+
+		// gRPC retryable errors
+	case ErrCodeGRPCConnectionTimeout,
+		ErrCodeGRPCUnavailable,
+		ErrCodeGRPCDeadlineExceeded,
+		ErrCodeGRPCResourceExhausted,
+		ErrCodeAgentNotResponding,
+		ErrCodeAgentBusy:
+		return true
+	}
+	return false
 }
 
 // NewDownloadError creates a new DownloadError with an error code
@@ -278,6 +243,15 @@ func NewDownloadError(url string, code ErrorCode, cause error) *DownloadError {
 		Code:    code,
 		Cause:   cause,
 		Message: code.String(),
+	}
+}
+
+// NewDownloadErrorWithMessage creates a new DownloadError with a custom message
+func NewDownloadErrorWithMessage(url string, code ErrorCode, message string) *DownloadError {
+	return &DownloadError{
+		URL:     url,
+		Code:    code,
+		Message: message,
 	}
 }
 
@@ -292,65 +266,13 @@ func NewDownloadErrorWithHTTPCode(url string, code ErrorCode, cause error, httpC
 	}
 }
 
-// NewDownloadErrorWithMessage creates a new DownloadError with a custom message
-func NewDownloadErrorWithMessage(url string, code ErrorCode, cause error, message string) *DownloadError {
-	return &DownloadError{
-		URL:     url,
-		Code:    code,
-		Cause:   cause,
-		Message: message,
-	}
-}
-
-// NewGRPCError creates a new DownloadError for gRPC errors
-func NewGRPCError(method string, code ErrorCode, cause error) *DownloadError {
-	return &DownloadError{
-		Code:    code,
-		Method:  method,
-		Cause:   cause,
-		Message: code.String(),
-	}
-}
-
-// NewGRPCErrorWithAgent creates a new DownloadError for gRPC errors with agent context
-func NewGRPCErrorWithAgent(method string, agentID string, code ErrorCode, cause error) *DownloadError {
+// NewGRPCError creates a new DownloadError for gRPC errors with agent context
+func NewGRPCError(method string, agentID string, code ErrorCode, cause error) *DownloadError {
 	return &DownloadError{
 		Code:    code,
 		Method:  method,
 		AgentID: agentID,
 		Cause:   cause,
 		Message: code.String(),
-	}
-}
-
-// NewAgentError creates a new DownloadError for agent-related gRPC errors
-// This is a convenience function for subtask error handling
-func NewAgentError(code ErrorCode, agentID int, cause error) *DownloadError {
-	return &DownloadError{
-		Code:    code,
-		Method:  "agent_comm",
-		AgentID: fmt.Sprintf("%d", agentID),
-		Cause:   cause,
-		Message: code.String(),
-	}
-}
-
-// NewURLError creates a new DownloadError for URL-related download errors
-// This is a convenience function for subtask error handling
-func NewURLError(code ErrorCode, url string, cause error) *DownloadError {
-	return &DownloadError{
-		URL:     url,
-		Code:    code,
-		Cause:   cause,
-		Message: code.String(),
-	}
-}
-
-// NewURLErrorWithMessage creates a new DownloadError with a custom message
-func NewURLErrorWithMessage(code ErrorCode, url string, message string) *DownloadError {
-	return &DownloadError{
-		URL:     url,
-		Code:    code,
-		Message: message,
 	}
 }

@@ -7,9 +7,9 @@ import (
 	"net"
 	"time"
 
-	"internal/agents"
-	"internal/pb"
-	"internal/version"
+	"github.com/imafish/ddson/internal/agents"
+	"github.com/imafish/ddson/internal/pb"
+	"github.com/imafish/ddson/internal/version"
 
 	"google.golang.org/grpc/peer"
 )

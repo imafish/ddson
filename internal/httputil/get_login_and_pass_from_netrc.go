@@ -9,7 +9,7 @@ import (
 
 	"github.com/bgentry/go-netrc/netrc"
 
-	"internal/common"
+	"github.com/imafish/ddson/internal/common"
 )
 
 func GetDataFromNetrc(downloadUrl string) (string, string, error) {

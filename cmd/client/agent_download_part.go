@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"internal/common"
-	"internal/httputil"
-	"internal/pb"
+	"github.com/imafish/ddson/internal/common"
+	"github.com/imafish/ddson/internal/httputil"
+	"github.com/imafish/ddson/internal/pb"
 )
 
 // DownloadPart implements the DownloadPart method of the DDSONServiceClientServer interface.

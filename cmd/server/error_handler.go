@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"internal/agents"
+	"github.com/imafish/ddson/internal/agents"
 )
 
 // ErrorRecord represents a single error occurrence

@@ -10,10 +10,10 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"internal/common"
-	"internal/httputil"
-	"internal/pb"
-	"internal/progressbar"
+	"github.com/imafish/ddson/internal/common"
+	"github.com/imafish/ddson/internal/httputil"
+	"github.com/imafish/ddson/internal/pb"
+	"github.com/imafish/ddson/internal/progressbar"
 )
 
 func download() {

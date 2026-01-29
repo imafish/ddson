@@ -9,7 +9,7 @@ import (
 	"sort"
 	"time"
 
-	"internal/database"
+	"github.com/imafish/ddson/internal/database"
 )
 
 type Persistency struct {

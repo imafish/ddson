@@ -1,7 +1,7 @@
 package progressbar_test
 
 import (
-	progressbar "internal/progressbar"
+	progressbar "github.com/imafish/ddson/internal/progressbar"
 	"math/rand"
 	"os"
 	"testing"

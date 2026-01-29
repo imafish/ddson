@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"time"
 
-	"internal/pb"
+	"github.com/imafish/ddson/internal/pb"
 )
 
 func (s *server) Download(req *pb.DownloadRequest, stream pb.DDSONService_DownloadServer) error {

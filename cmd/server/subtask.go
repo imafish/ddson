@@ -10,8 +10,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"internal/agents"
-	"internal/pb"
+	"github.com/imafish/ddson/internal/agents"
+	"github.com/imafish/ddson/internal/pb"
 )
 
 type subTaskInfo struct {

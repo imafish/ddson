@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"internal/pb"
+	"github.com/imafish/ddson/internal/pb"
 	"log/slog"
 	"time"
 )

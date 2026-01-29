@@ -3,7 +3,7 @@ package main
 import (
 	"sync"
 
-	"internal/pb"
+	"github.com/imafish/ddson/internal/pb"
 )
 
 type taskState int

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"internal/pb"
+	"github.com/imafish/ddson/internal/pb"
 	"log/slog"
 	"sync"
 )

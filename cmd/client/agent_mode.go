@@ -13,8 +13,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 
-	"internal/pb"
-	"internal/version"
+	"github.com/imafish/ddson/internal/pb"
+	"github.com/imafish/ddson/internal/version"
 )
 
 type client struct {

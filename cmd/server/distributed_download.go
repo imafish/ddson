@@ -12,9 +12,9 @@ import (
 
 	"log/slog"
 
-	"internal/common"
-	"internal/httputil"
-	"internal/pb"
+	"github.com/imafish/ddson/internal/common"
+	"github.com/imafish/ddson/internal/httputil"
+	"github.com/imafish/ddson/internal/pb"
 )
 
 const CHUNK_SIZE = int64(10 * 1024 * 1024) // 10 MB

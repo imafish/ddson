@@ -10,9 +10,9 @@ import (
 
 	"golang.org/x/term"
 
-	"internal/common"
-	"internal/logging"
-	"internal/version"
+	"github.com/imafish/ddson/internal/common"
+	"github.com/imafish/ddson/internal/logging"
+	"github.com/imafish/ddson/internal/version"
 )
 
 var (

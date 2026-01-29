@@ -13,30 +13,51 @@
 4. [ ] Should calculate speed accurately
 5. [ ] Should return status of current status -- size of queue, total download size, current speed, estimated wait time.
 
-## Dev plan
+## TODOs
 
-1. [ ] client runs as a daemon:
-   1. [ ] /var/run/ddson.pid to track PID
-   2. [ ] /var/log/ddson.log to save logs
-   3. [ ] --daemon to start as daemon
-   4. [ ] --stop to stop the daemon
-2. [ ] Daemonize using systemd:
-   1. [ ] log to `stdout`
-   2. [ ] shut down on `SIGTERM` or `SIGINT`
-   3. [ ] Reload config on `SIGHUP`
-   4. [ ] A config file for systemd system.
-3. [ ] handle SIGTERM to shutdown gracefully
-4. [x] logging: rotate.
-5. [ ] move supporting go code to a separate git repository, so they can be shared across project.
-6. [ ] fail a subtask if it is too slow (timeout)
-7. [x] use a db to track saved files, and cache them.
-   1. [x] remove old cache items.
-8. [ ] more commands:
-   1. [ ] query
-      1. [ ] move to pending tasks to DB
-   2. [ ] request
-   3. [ ] download
-   4. [ ] status
+| #   | Pri | Task                                                      | Status |
+| --- | --- | --------------------------------------------------------- | ------ |
+| 1   |     | client runs as a daemon                                   | ✅      |
+| 1.1 |     | .   /var/run/ddson.pid to track PID                       | ✅      |
+| 1.2 |     | .   /var/log/ddson.log to save logs                       | ✅      |
+| 1.3 |     | .   --daemon to start as daemon                           | ✅      |
+| 1.4 |     | .   --stop to stop the daemon                             | ✅      |
+| 2   | L   | Daemonize using systemd                                   | ⬜      |
+| 2.1 |     | .   log to `stdout`                                       | ⬜      |
+| 2.2 |     | .   shut down on `SIGTERM` or `SIGINT`                    | ⬜      |
+| 2.3 |     | .   Reload config on `SIGHUP`                             | ⬜      |
+| 2.4 |     | .   A config file for systemd system                      | ⬜      |
+| 3   | L   | .   handle SIGTERM to shutdown gracefully                 | ⬜      |
+| 4   | L   | logging: rotate                                           | ✅      |
+| 5   | L   | move supporting go code to a separate git repository      | ⬜      |
+| 6   |     | fail a subtask if it is too slow (timeout)                | ⬜      |
+| 7   |     | use a db to track saved files, and cache them             | ✅      |
+| 7.1 |     | .   remove old cache items                                | ✅      |
+| 8   |     | more commands                                             | ⬜      |
+| 8.1 |     | .   query (move to pending tasks to DB)                   | ⬜      |
+| 8.2 |     | .   request                                               | ⬜      |
+| 8.3 |     | .   download                                              | ⬜      |
+| 8.4 |     | .   status                                                | ⬜      |
+| 9   |     | refactor, maybe re-write: split agent to agent and client | ⬜      |
+| 10  |     | split GRPC interfaces to agent and client                 | ⬜      |
+| 11  |     | refactor: use AgentManager to manage agents               | ⬜      |
+| 12  |     | refactor: use TaskManager to manage tasks                 | ⬜      |
+| 13  |     | refactor/fix: use ErrorHandler to handle errors           | ⬜      |
+| 14  |     | agent: speed check                                        | ⬜      |
+| 15  |     | agent: vpn detection                                      | ⬜      |
+| 16  |     | agent: multiple task support                              | ⬜      |
+| 17  |     | web UI                                                    | ⬜      |
+| 18  |     | refactor to standard go project layout                    | ⬜      |
+| 19  |     | refactor: better structure                                | ⬜      |
+| 20  |     | refactor, maybe re-write: Include errors in GRPC response | ⬜      |
+| 21  |     | refactor: error-handler should not be a global singleton  | ⬜      |
+| 22  |     | refactor: type agent-manager                              | ⬜      |
+| 23  |     | if a task is pending, periodically update status          | ⬜      |
+
+
+## Plan
+13, 18
+
 
 ## MISC
 

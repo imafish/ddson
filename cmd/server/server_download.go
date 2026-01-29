@@ -62,6 +62,7 @@ func (s *server) Download(req *pb.DownloadRequest, stream pb.DDSONService_Downlo
 	}
 
 	// cleanup persistency
+	// TODO: move cleaning up to persistency package and make it periodic (a goroutine?)
 	slog.Debug("Cleaning up persistency")
 	err = s.persistency.Cleanup(time.Second*60*60*24*16, 100*1024*1024*1024, 200*1024*1024*1024) // 16 days, 100 GB, 200 GB
 	if err != nil {

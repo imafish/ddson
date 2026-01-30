@@ -77,10 +77,14 @@ func (am *AgentManager) RegisterAgent(endpoint string, name string, version stri
 	return agent.id, nil
 }
 
-func (am *AgentManager) HeartbeatReceived(agentID int) {
+func (am *AgentManager) HeartbeatReceived(agentID int) bool {
 	am.mtx.Lock()
 	defer am.mtx.Unlock()
+	if _, exists := am.agents[agentID]; !exists {
+		return false
+	}
 	am.agentHeartbeats[agentID] = time.Now()
+	return true
 }
 
 func (am *AgentManager) DropAndBanAgent(agentID int, duration time.Duration, reason string) {
@@ -106,8 +110,24 @@ func (am *AgentManager) Stop() {
 	am.wg.Wait()
 }
 
-func (am *AgentManager) GetIdleAgentChan() <-chan *AgentInfo {
-	return am.idleAgentChan
+func (am *AgentManager) GetIdleAgent(abortChan <-chan struct{}) *AgentInfo {
+	for {
+		select {
+		case agent := <-am.idleAgentChan:
+			slog.Debug("GetIdleAgent returning agent", "agentID", agent.id)
+			am.mtx.Lock()
+			if agent.status != AgentStatusQueued {
+				slog.Warn("GetIdleAgent: agent status is not queued", "agentID", agent.id, "status", agent.status)
+				am.mtx.Unlock()
+				continue
+			}
+			agent.status = AgentStatusBusy
+			return agent
+		case <-abortChan:
+			slog.Debug("GetIdleAgent aborted")
+			return nil
+		}
+	}
 }
 
 func (am *AgentManager) ReleaseAgent(agent *AgentInfo, successful bool) {

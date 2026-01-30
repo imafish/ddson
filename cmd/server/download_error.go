@@ -1,16 +1,18 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"log/slog"
+)
 
 // ErrorCode represents error codes as an enum type
 // Codes 100-599 are download errors, codes 600+ are gRPC errors
 type ErrorCode int
 
 const (
-	// Connection errors (1xx)
-	ErrCodeHTTPError ErrorCode = iota + 100
-
-	ErrCodeUnknownDownloadError ErrorCode = iota + 200
+	// Local Errors
+	ErrCodeLocalErrorStart ErrorCode = iota + 100
+	ErrCodeUnknownDownloadError
 	ErrCodeDownloadCancelled
 	ErrCodeDownloadInterrupted
 	ErrCodePartialDownloadFailed
@@ -27,24 +29,29 @@ const (
 	ErrCodeInvalidPath
 	ErrCodeTempFileCleanup
 
-	// URL errors (5xx)
-	ErrCodeInvalidURL ErrorCode = iota + 500
+	// Bad Argument
+	ErrCodeInvalidURL
 	ErrCodeUnsupportedProtocol
 	ErrCodeHostUnreachable
 	ErrCodeDNSLookupFailed
 
-	// gRPC Connection errors (6xx)
+	// Connection errors (2xx)
+	ErrCodeRemoteErrorStart ErrorCode = iota + 500
+	ErrCodeHTTPError
+	ErrCodeUnexpectedStatus
+
+	// gRPC Connection errors
 	ErrCodeGRPCConnectionFailed ErrorCode = iota + 600
 	ErrCodeGRPCConnectionClosed
 	ErrCodeGRPCConnectionTimeout
 	ErrCodeGRPCUnavailable
 
-	// gRPC Authentication/Authorization errors (7xx)
+	// gRPC Authentication/Authorization errors
 	ErrCodeGRPCUnauthenticated ErrorCode = iota + 700
 	ErrCodeGRPCPermissionDenied
 	ErrCodeGRPCInvalidCredentials
 
-	// gRPC Request/Response errors (8xx)
+	// gRPC Request/Response errors
 	ErrCodeGRPCInvalidRequest ErrorCode = iota + 800
 	ErrCodeGRPCInvalidResponse
 	ErrCodeGRPCDeadlineExceeded
@@ -56,12 +63,10 @@ const (
 	ErrCodeGRPCUnimplemented
 	ErrCodeGRPCDataLoss
 
-	// Agent communication errors (10xx)
-	ErrCodeAgentNotFound ErrorCode = iota + 1000
-	ErrCodeAgentNotResponding
-	ErrCodeAgentDisconnected
-	ErrCodeAgentBusy
-	ErrCodeNoAgentsAvailable
+	// Stream errors (10xx)
+	ErrCodeStreamClosed ErrorCode = iota + 1000
+	ErrCodeStreamSendFailed
+	ErrCodeStreamRecvFailed
 
 	// Task errors (11xx)
 	ErrCodeTaskNotFound ErrorCode = iota + 1100
@@ -70,25 +75,17 @@ const (
 	ErrCodeTaskFailed
 	ErrCodeSubtaskFailed
 
-	// Stream errors (12xx)
-	ErrCodeStreamClosed ErrorCode = iota + 1200
-	ErrCodeStreamSendFailed
-	ErrCodeStreamRecvFailed
+	// Agent communication errors (12xx)
+	ErrCodeAgentNotFound ErrorCode = iota + 1200
+	ErrCodeAgentNotResponding
+	ErrCodeAgentDisconnected
+	ErrCodeAgentBusy
+	ErrCodeNoAgentsAvailable
 )
 
 // errorMessages maps error codes to their human-readable messages
 var errorMessages = map[ErrorCode]string{
-	ErrCodeHTTPError:             "HTTP error occurred",
-	ErrCodeUnknownDownloadError:  "unknown download error",
-	ErrCodeDownloadCancelled:     "download cancelled by user",
-	ErrCodeDownloadInterrupted:   "download interrupted",
-	ErrCodePartialDownloadFailed: "partial download failed",
-	ErrCodeResumeFailed:          "failed to resume download",
-	ErrCodeChecksumMismatch:      "checksum verification failed",
-	ErrCodeFileSizeMismatch:      "downloaded file size does not match expected size",
-	ErrCodeRangeNotSupported:     "server does not support partial content (range requests)",
-
-	// File system errors
+	// Local errors
 	ErrCodeInsufficientSpace: "insufficient disk space",
 	ErrCodeWriteFailed:       "failed to write to file",
 	ErrCodeReadFailed:        "failed to read from file",
@@ -98,7 +95,20 @@ var errorMessages = map[ErrorCode]string{
 	ErrCodeInvalidPath:       "invalid file path",
 	ErrCodeTempFileCleanup:   "failed to clean up temporary files",
 
-	// URL errors
+	ErrCodeUnknownDownloadError:  "unknown download error",
+	ErrCodeDownloadCancelled:     "download cancelled by user",
+	ErrCodeDownloadInterrupted:   "download interrupted",
+	ErrCodePartialDownloadFailed: "partial download failed",
+	ErrCodeResumeFailed:          "failed to resume download",
+	ErrCodeChecksumMismatch:      "checksum verification failed",
+	ErrCodeFileSizeMismatch:      "downloaded file size does not match expected size",
+	ErrCodeRangeNotSupported:     "server does not support partial content (range requests)",
+
+	// Remote errors
+	ErrCodeHTTPError:        "HTTP error occurred",
+	ErrCodeUnexpectedStatus: "unexpected download status reported by agent",
+
+	// Bad Argument
 	ErrCodeInvalidURL:          "invalid URL",
 	ErrCodeUnsupportedProtocol: "unsupported protocol",
 	ErrCodeHostUnreachable:     "host unreachable",
@@ -165,20 +175,24 @@ func (e ErrorCode) IsDownloadError() bool {
 	return e >= 100 && e < 600
 }
 
+// TODO: Download error should have a field to link it to a task, because it is always from a download task
+// TODO: remove URL field
 // DownloadError wraps an error with additional context about the download or gRPC operation
 type DownloadError struct {
-	URL      string
-	Code     ErrorCode
-	Cause    error
-	HTTPCode int
-	Method   string // gRPC method name (for gRPC errors)
-	AgentID  string // Agent ID (for gRPC errors)
-	Message  string
+	URL     string
+	Code    ErrorCode
+	Cause   error
+	Message string
+
+	HTTPCode int // for http errors
+
+	Method  string // gRPC method name (for gRPC errors)
+	AgentID int    // Agent ID (for gRPC errors)
 }
 
 func (e *DownloadError) Error() string {
 	if e.Code.IsGrpcError() {
-		if e.AgentID != "" {
+		if e.AgentID != -1 {
 			if e.Cause != nil {
 				return fmt.Sprintf("gRPC error [%d] [%s] for agent %s: %s - %v", e.Code, e.Method, e.AgentID, e.Message, e.Cause)
 			}
@@ -236,13 +250,30 @@ func (e *DownloadError) IsRetryable() bool {
 	return false
 }
 
+// analyze the error message and extract HTTP related issues from it.
+// TODO: This is ill-formed. Should return error in response. Should not use grpc error mechanism for this.
+func NewDownloadErrorFromError(url string, code ErrorCode, cause error, agentID int, method string) *DownloadError {
+	httpCode := extractHTTPStatusCode(cause)
+	if httpCode != 0 {
+		return NewDownloadErrorWithHTTPCode(url, ErrCodeHTTPError, cause, httpCode)
+	}
+
+	return &DownloadError{
+		URL:     url,
+		Code:    code,
+		Cause:   cause,
+		AgentID: agentID,
+		Method:  method,
+	}
+}
+
 // NewDownloadError creates a new DownloadError with an error code
 func NewDownloadError(url string, code ErrorCode, cause error) *DownloadError {
 	return &DownloadError{
 		URL:     url,
 		Code:    code,
 		Cause:   cause,
-		Message: code.String(),
+		AgentID: -1,
 	}
 }
 
@@ -252,6 +283,7 @@ func NewDownloadErrorWithMessage(url string, code ErrorCode, message string) *Do
 		URL:     url,
 		Code:    code,
 		Message: message,
+		AgentID: -1,
 	}
 }
 
@@ -262,17 +294,37 @@ func NewDownloadErrorWithHTTPCode(url string, code ErrorCode, cause error, httpC
 		Code:     code,
 		Cause:    cause,
 		HTTPCode: httpCode,
-		Message:  code.String(),
+		AgentID:  -1,
 	}
 }
 
 // NewGRPCError creates a new DownloadError for gRPC errors with agent context
-func NewGRPCError(method string, agentID string, code ErrorCode, cause error) *DownloadError {
+func NewGRPCError(url string, code ErrorCode, cause error, agentID int, method string) *DownloadError {
 	return &DownloadError{
+		URL:     url,
 		Code:    code,
+		Cause:   cause,
 		Method:  method,
 		AgentID: agentID,
-		Cause:   cause,
-		Message: code.String(),
 	}
+}
+
+func extractHTTPStatusCode(err error) int {
+	if err == nil {
+		return 0
+	}
+
+	slog.Debug("Extracting HTTP status code from error", "error", err)
+
+	// Look for "unexpected HTTP status: <code> ..." or "unexpected HTTP status: <code>"
+	msg := err.Error()
+	var code int
+
+	// Try to match "unexpected HTTP status: <code>"
+	n, _ := fmt.Sscanf(msg, "unexpected HTTP status: %d", &code)
+	if n >= 1 {
+		return code
+	}
+
+	return 0
 }

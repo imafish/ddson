@@ -278,9 +278,6 @@ func executeSubTasks(task *taskInfo, server *server) error {
 		}
 	}
 
-	// Cleanup error stats for this task
-	server.errorHandler.CleanupTask(task.id)
-
 	return firstErr
 }
 

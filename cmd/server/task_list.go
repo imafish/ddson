@@ -1,9 +1,11 @@
 package main
 
 import (
-	"github.com/imafish/ddson/internal/pb"
 	"log/slog"
 	"sync"
+
+	"github.com/imafish/ddson/internal/agents"
+	"github.com/imafish/ddson/internal/pb"
 )
 
 type taskList struct {
@@ -22,12 +24,12 @@ func newTaskList() *taskList {
 	}
 }
 
-func (t *taskList) addTask(downloadUrl string, checksum string, stream pb.DDSONService_DownloadServer, idOfClient int) *taskInfo {
+func (t *taskList) addTask(downloadUrl string, checksum string, stream pb.DDSONService_DownloadServer, idOfClient int, agentManager *agents.AgentManager) *taskInfo {
 	t.mtx.Lock()
 	newId := t.freeId
 	t.freeId++
 
-	task := newTaskInfo(downloadUrl, checksum, stream, newId, idOfClient)
+	task := newTaskInfo(downloadUrl, checksum, stream, newId, idOfClient, agentManager)
 	t.tasks = append(t.tasks, task)
 	t.mtx.Unlock()
 	t.cond.Broadcast() // Notify any waiting goroutines

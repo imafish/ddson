@@ -27,6 +27,8 @@ go.work.sum
 # generated files
 cmd/client/ddson_client
 cmd/server/ddson_server
+cmd/client/client
+cmd/server/server
 internal/pb/*.pb.go
 cmd/client/ddson_client_darwin_arm64
 

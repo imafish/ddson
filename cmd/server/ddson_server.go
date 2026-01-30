@@ -21,11 +21,9 @@ import (
 
 type server struct {
 	pb.UnimplementedDDSONServiceServer
-	agentList       agents.AgentList
-	taskList        *taskList
-	heartbeatTimers map[int]*time.Timer
-	persistency     *persistency.Persistency
-	errorHandler    *ErrorHandler
+	agentManager *agents.AgentManager
+	taskList     *taskList
+	persistency  *persistency.Persistency
 }
 
 func newServer() *server {
@@ -41,13 +39,11 @@ func newServer() *server {
 		os.Exit(1)
 	}
 
-	agentList := agents.NewAgentList()
+	agentManager := agents.NewAgentManagerWithDefaultConfig()
 	return &server{
-		agentList:       agentList,
-		taskList:        newTaskList(),
-		heartbeatTimers: make(map[int]*time.Timer),
-		persistency:     p,
-		errorHandler:    NewErrorHandlerWithDefaults(agentList),
+		agentManager: agentManager,
+		taskList:     newTaskList(),
+		persistency:  p,
 	}
 }
 

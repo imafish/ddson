@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"time"
 
-	"github.com/imafish/ddson/internal/agents"
 	"github.com/imafish/ddson/internal/pb"
 	"github.com/imafish/ddson/internal/version"
 
@@ -39,28 +37,17 @@ func (s *server) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.Reg
 	agentAddr = agentAddr[:len(agentAddr)-len(fmt.Sprintf(":%d", p.Addr.(*net.TCPAddr).Port))]
 	port := int(req.Port)
 
-	addr := net.JoinHostPort(agentAddr, fmt.Sprintf("%d", port))
-	slog.Debug("Agent info", "address", addr, "port", port, "version", req.Version, "name", req.Name)
+	endpoint := net.JoinHostPort(agentAddr, fmt.Sprintf("%d", port))
+	slog.Debug("Agent info", "endpoint", endpoint, "port", port, "version", req.Version, "name", req.Name)
 
 	// Create new agent
-	newAgent := agents.NewAgent(req.Name, req.Version, addr)
-	id, err := s.agentList.AddAgent(newAgent)
+	id, err := s.agentManager.RegisterAgent(req.Name, req.Version, endpoint)
 	if err != nil {
 		slog.Error("Failed to register agent", "error", err, "name", req.Name, "address", agentAddr, "port", port)
 		return nil, err
 	}
-	heartbeatTimer := time.NewTimer(20 * time.Second)
-	s.heartbeatTimers[id] = heartbeatTimer
 
-	go func() {
-		<-heartbeatTimer.C
-		slog.Debug("Heartbeat timer expired, removing agent", "agentID", id, "name", req.Name, "address", addr)
-		newAgent.Retire()
-		s.agentList.RemoveAgent(id)
-		delete(s.heartbeatTimers, id)
-	}()
-
-	slog.Info("Agent registered", "name", req.Name, "id", id, "address", addr)
+	slog.Info("Agent registered", "name", req.Name, "id", id, "address", endpoint)
 	return &pb.RegisterResponse{
 		Id:            int32(id),
 		ServerVersion: version.CurrentVersion().String(),

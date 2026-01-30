@@ -17,7 +17,7 @@ func (s *server) Download(req *pb.DownloadRequest, stream pb.DDSONService_Downlo
 	// Send initial status as PENDING
 	err := stream.Send(&pb.DownloadStatus{
 		Status:        pb.DownloadStatusType_PENDING,
-		ClientCount:   int32(s.agentList.Count()),
+		ClientCount:   int32(s.agentManager.GetAgentCount()),
 		NumberInQueue: int32(s.taskList.size()),
 	})
 	if err != nil {
@@ -39,7 +39,7 @@ func (s *server) Download(req *pb.DownloadRequest, stream pb.DDSONService_Downlo
 	}
 
 	// Create a task and add it to task list
-	taskInfo := s.taskList.addTask(req.GetUrl(), req.GetChecksum(), stream, agentID)
+	taskInfo := s.taskList.addTask(req.GetUrl(), req.GetChecksum(), stream, agentID, s.agentManager)
 
 	// wait for the task to complete
 	// TODO: periodically update the status (using select?)

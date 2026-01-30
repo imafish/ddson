@@ -10,7 +10,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/imafish/ddson/internal/agents"
 	"github.com/imafish/ddson/internal/pb"
 )
 
@@ -19,10 +18,8 @@ type subTaskInfo struct {
 	id           int
 	offset       int64
 	downloadSize int64
-	assignedTo   int
 	targetFile   string
-	err          error
-	retryCount   int
+	err          *DownloadError
 	progressChan chan [2]int
 }
 
@@ -32,40 +29,39 @@ func newSubTaskInfo(downloadUrl string, id int, offset int64, downloadSize int64
 		id:           id,
 		offset:       offset,
 		downloadSize: downloadSize,
-		assignedTo:   -1,
 		targetFile:   targetFile,
+		err:          nil,
 		progressChan: progressChan,
 	}
 }
 
+// TODO: execute should not be a method of subtask
+// TODO: quitFlag should be a channel, rename to taskAbortChan
 func (subTask *subTaskInfo) execute(task *taskInfo, server *server, finishChan chan int) {
 	slog.Debug("Executing subtask", "subtaskID", subTask.id, "offset", subTask.offset, "size", subTask.downloadSize, "targetFile", subTask.targetFile)
 
 	for !task.quitFlag {
-		var lastAgentID int
-		err := server.agentList.RunTask(func(agentInfo *agents.AgentInfo) error {
-			lastAgentID = agentInfo.GetID()
-			slog.Debug("Running subtask on agent", "subtaskID", subTask.id, "agentInfo", agentInfo)
-			return subTask.downloadChunk(&task.quitFlag, agentInfo.GetAddr(), lastAgentID)
-		})
+		agent := server.agentManager.GetIdleAgent(nil)
+		if task.quitFlag {
+			// Task was marked to quit while waiting for an agent
+			slog.Info("Task quit flag set while waiting for agent, stopping subtask", "subtaskID", subTask.id)
+			break
+		}
+		slog.Debug("Running subtask on agent", "subtaskID", subTask.id, "agentID", agent.GetID(), "agentAddr", agent.GetAddr())
+		err := subTask.downloadChunk(&task.quitFlag, agent.GetAddr(), agent.GetID())
+		server.agentManager.ReleaseAgent(agent, err == nil)
 
 		if err == nil {
 			// Success - report to error handler and exit loop
-			server.errorHandler.ReportAgentSuccess(lastAgentID)
-			subTask.err = nil
 			break
 		}
 
-		// Convert error to DownloadError and handle via error handler
-		downloadErr := wrapAsDownloadError(err, subTask.downloadUrl, lastAgentID)
-		subTask.err = downloadErr
-		subTask.retryCount++
-
 		// Let error handler decide what to do
-		taskFailed := server.errorHandler.HandleSubtaskError(task, subTask, lastAgentID, downloadErr)
+		taskFailed := task.errorHandler.HandleSubtaskError(task, subTask, agent.GetID(), err)
 		if taskFailed {
 			// Error handler failed the task - stop retrying
 			slog.Info("Task failed by error handler, stopping subtask", "subtaskID", subTask.id)
+			subTask.err = err
 			break
 		}
 		// Error handler says retry - loop continues
@@ -74,61 +70,16 @@ func (subTask *subTaskInfo) execute(task *taskInfo, server *server, finishChan c
 	if task.quitFlag && subTask.err == nil {
 		// Subtask was stopped by quit flag (another subtask failed the task)
 		slog.Info("Subtask execution stopped by quit flag", "subtaskID", subTask.id)
-		subTask.err = NewURLErrorWithMessage(ErrCodeDownloadCancelled, subTask.downloadUrl, "cancelled by quit flag")
+		subTask.err = NewDownloadErrorWithMessage(subTask.downloadUrl, ErrCodeDownloadCancelled, "cancelled by quit flag")
 	}
 
 	// Notify that the subtask finished
-	slog.Info("Subtask execution finished, notifying task", "subtaskID", subTask.id, "retryCount", subTask.retryCount, "error", subTask.err)
+	slog.Info("Subtask execution finished, notifying task", "subtaskID", subTask.id, "error", subTask.err)
 	finishChan <- subTask.id
 	slog.Debug("Subtask execution finished, task notified", "subtaskID", subTask.id)
 }
 
-// wrapAsDownloadError converts a generic error to a DownloadError with appropriate error code
-func wrapAsDownloadError(err error, url string, agentID int) *DownloadError {
-	// If it's already a DownloadError, return it
-	if de, ok := err.(*DownloadError); ok {
-		return de
-	}
-
-	errMsg := err.Error()
-
-	// Classify the error based on message patterns
-	switch {
-	case contains(errMsg, "connection refused", "connection reset", "no route to host"):
-		return NewAgentError(ErrCodeGRPCConnectionFailed, agentID, err)
-	case contains(errMsg, "context deadline exceeded", "timeout"):
-		return NewAgentError(ErrCodeGRPCConnectionTimeout, agentID, err)
-	case contains(errMsg, "EOF", "stream closed", "transport is closing"):
-		return NewAgentError(ErrCodeStreamClosed, agentID, err)
-	case contains(errMsg, "unavailable"):
-		return NewAgentError(ErrCodeGRPCUnavailable, agentID, err)
-	case contains(errMsg, "received", "expected", "bytes", "mismatch"):
-		return NewURLErrorWithMessage(ErrCodeFileSizeMismatch, url, errMsg)
-	case contains(errMsg, "unexpected status"):
-		return NewURLErrorWithMessage(ErrCodeDownloadFailed, url, errMsg)
-	case contains(errMsg, "quit flag", "cancelled"):
-		return NewURLErrorWithMessage(ErrCodeDownloadCancelled, url, errMsg)
-	default:
-		// Default to generic download failed
-		return NewURLError(ErrCodeDownloadFailed, url, err)
-	}
-}
-
-// contains checks if s contains any of the substrings
-func contains(s string, substrs ...string) bool {
-	for _, sub := range substrs {
-		if len(sub) > 0 && len(s) >= len(sub) {
-			for i := 0; i <= len(s)-len(sub); i++ {
-				if s[i:i+len(sub)] == sub {
-					return true
-				}
-			}
-		}
-	}
-	return false
-}
-
-func (subTask *subTaskInfo) downloadChunk(quitFlag *bool, addr string, agentID int) error {
+func (subTask *subTaskInfo) downloadChunk(quitFlag *bool, addr string, agentID int) *DownloadError {
 	downloadUrl, offset, downloadSize := subTask.downloadUrl, subTask.offset, subTask.downloadSize
 	subtaskID := subTask.id
 	slog.Info("Downloading chunk",
@@ -146,7 +97,7 @@ func (subTask *subTaskInfo) downloadChunk(quitFlag *bool, addr string, agentID i
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		slog.Error("failed to connect to server", "subtaskID", subtaskID, "error", err)
-		return NewAgentError(ErrCodeGRPCConnectionFailed, agentID, err)
+		return NewGRPCError(downloadUrl, ErrCodeGRPCConnectionFailed, err, agentID, "NewClient")
 	}
 	defer conn.Close()
 
@@ -161,7 +112,7 @@ func (subTask *subTaskInfo) downloadChunk(quitFlag *bool, addr string, agentID i
 	})
 	if err != nil {
 		slog.Error("Error sending download request", "subtaskID", subtaskID, "error", err)
-		return NewAgentError(ErrCodeGRPCConnectionFailed, agentID, err)
+		return NewDownloadErrorFromError(downloadUrl, ErrCodeGRPCConnectionFailed, err, agentID, "DownloadPart")
 	}
 
 	// Read the response from the agent
@@ -169,7 +120,7 @@ func (subTask *subTaskInfo) downloadChunk(quitFlag *bool, addr string, agentID i
 	file, err := os.Create(targetFile)
 	if err != nil {
 		slog.Error("Error creating file", "subtaskID", subtaskID, "error", err)
-		return NewURLError(ErrCodeFileCreateFailed, downloadUrl, err)
+		return NewDownloadError(downloadUrl, ErrCodeFileCreateFailed, err)
 	}
 	defer file.Close()
 
@@ -185,7 +136,7 @@ func (subTask *subTaskInfo) downloadChunk(quitFlag *bool, addr string, agentID i
 		}
 		if err != nil {
 			slog.Error("Error receiving data", "subtaskID", subtaskID, "error", err)
-			return NewAgentError(ErrCodeStreamRecvFailed, agentID, err)
+			return NewDownloadErrorFromError(downloadUrl, ErrCodeStreamRecvFailed, err, agentID, "DownloadPart.stream.Recv")
 		}
 
 		status := resp.GetStatus()
@@ -206,24 +157,24 @@ func (subTask *subTaskInfo) downloadChunk(quitFlag *bool, addr string, agentID i
 			n, err := file.Write(resp.GetData())
 			if err != nil {
 				slog.Error("Error writing to file", "subtaskID", subtaskID, "error", err)
-				return NewURLError(ErrCodeWriteFailed, downloadUrl, err)
+				return NewDownloadError(downloadUrl, ErrCodeWriteFailed, err)
 			}
 			received += int64(n)
 			slog.Debug("Data written to file", "subtaskID", subtaskID, "bytesWritten", n, "dataSize", dataSize, "totalReceived", received)
 
 		default:
 			slog.Error("Unexpected status", "subtaskID", subtaskID, "status", resp.GetStatus())
-			return NewURLErrorWithMessage(ErrCodeDownloadFailed, downloadUrl, fmt.Sprintf("unexpected status: %s", resp.GetStatus()))
+			return NewDownloadErrorWithMessage(downloadUrl, ErrCodeUnexpectedStatus, fmt.Sprintf("unexpected status: %s", resp.GetStatus()))
 		}
 	}
 
 	if *quitFlag {
 		slog.Info("Download stopped by quit flag", "subtaskID", subtaskID)
-		return NewURLErrorWithMessage(ErrCodeDownloadCancelled, downloadUrl, "download stopped by quit flag")
+		return NewDownloadErrorWithMessage(downloadUrl, ErrCodeDownloadCancelled, "download stopped by quit flag")
 	}
 	if received != downloadSize {
 		slog.Error("Error: received bytes mismatch", "subtaskID", subtaskID, "received", received, "expected", downloadSize)
-		return NewURLErrorWithMessage(ErrCodeFileSizeMismatch, downloadUrl, fmt.Sprintf("received %d bytes, expected %d bytes", received, downloadSize))
+		return NewDownloadErrorWithMessage(downloadUrl, ErrCodeFileSizeMismatch, fmt.Sprintf("received %d bytes, expected %d bytes", received, downloadSize))
 	}
 	slog.Info("Download completed for subtask", "subtaskID", subtaskID, "file", targetFile)
 	return nil

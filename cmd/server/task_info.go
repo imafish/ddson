@@ -3,6 +3,7 @@ package main
 import (
 	"sync"
 
+	"github.com/imafish/ddson/internal/agents"
 	"github.com/imafish/ddson/internal/pb"
 )
 
@@ -22,7 +23,7 @@ type taskInfo struct {
 	id          int // task ID
 	downloadUrl string
 	checksum    string
-	stream      pb.DDSONService_DownloadServer
+	stream      pb.DDSONService_DownloadServer // TODO task info should not have grpc stream
 
 	mtx            *sync.Mutex // Mutex to protect access to the task states
 	state          taskState
@@ -32,9 +33,11 @@ type taskInfo struct {
 	err      error
 	quitFlag bool // used to signal subtasks to stop processing
 	done     chan bool
+
+	errorHandler *ErrorHandler // TODO: this field should be in 'task manager class' in the future.
 }
 
-func newTaskInfo(downloadUrl string, checksum string, stream pb.DDSONService_DownloadServer, taskId int, idOfClient int) *taskInfo {
+func newTaskInfo(downloadUrl string, checksum string, stream pb.DDSONService_DownloadServer, taskId int, idOfClient int, agentManager *agents.AgentManager) *taskInfo {
 	mtx := &sync.Mutex{}
 	return &taskInfo{
 		downloadUrl: downloadUrl,
@@ -48,6 +51,8 @@ func newTaskInfo(downloadUrl string, checksum string, stream pb.DDSONService_Dow
 		subtasks: make([]*subTaskInfo, 0),
 		err:      nil,
 		done:     make(chan bool),
+
+		errorHandler: NewErrorHandlerWithDefaults(agentManager),
 	}
 }
 

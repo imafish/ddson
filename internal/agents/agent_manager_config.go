@@ -11,7 +11,7 @@ type AgentManagerConfig struct {
 func NewDefaultAgentManagerConfig() *AgentManagerConfig {
 	return &AgentManagerConfig{
 		HeartbeatCheckIntervalSec:      10,
-		HeartbeatTimeoutSec:            30,
+		HeartbeatTimeoutSec:            40,
 		MaxConsecutiveErrors:           5,
 		HeartbeatBanDurationSec:        60,
 		ConsecutiveErrorBanDurationSec: 600,

@@ -13,7 +13,7 @@ type AlreadyExistsError struct {
 
 // Error implements the error interface for AlreadyExistsError.
 func (e *AlreadyExistsError) Error() string {
-	return fmt.Sprintf("agent with ID %d already exists", e.ID, "endpoint", e.Endpoint)
+	return fmt.Sprintf("agent with endpoint %s already exists with ID %d", e.Endpoint, e.ID)
 }
 
 // AgentIsBannedError is returned when an agent is banned and cannot be added to the agent list.

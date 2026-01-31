@@ -1,4 +1,4 @@
-package main
+package downloadtask
 
 import (
 	"log/slog"
@@ -61,7 +61,7 @@ func NewErrorHandlerWithDefaults(agentManager *agents.AgentManager) *ErrorHandle
 // HandleSubtaskError handles an error from a subtask execution.
 // It logs the error, updates statistics, bans agents if needed, and fails the task if necessary.
 // Returns true if the task failed (caller should stop processing), false if subtask can be retried.
-func (h *ErrorHandler) HandleSubtaskError(task *taskInfo, subtask *subTaskInfo, agentID int, err *DownloadError) bool {
+func (h *ErrorHandler) HandleSubtaskError(task *Task, subtask *SubTask, agentID int, err *DownloadError) bool {
 	if err == nil {
 		return false
 	}
@@ -69,9 +69,9 @@ func (h *ErrorHandler) HandleSubtaskError(task *taskInfo, subtask *subTaskInfo, 
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
 
-	taskID := task.id
+	taskID := task.info.ID
 	subtaskID := subtask.id
-	url := task.downloadUrl
+	url := task.info.DownloadUrl
 
 	// Classify the error: if not retryable, it's fatal
 	h.errors[subtaskID]++
@@ -126,12 +126,12 @@ func (h *ErrorHandler) banAgent(agentID int, reason string) {
 }
 
 // failTask marks a task as failed
-func (h *ErrorHandler) failTask(task *taskInfo, err *DownloadError) {
+func (h *ErrorHandler) failTask(task *Task, err *DownloadError) {
 	slog.Error("Failing task",
-		"taskID", task.id,
-		"url", task.downloadUrl,
+		"taskID", task.info.ID,
+		"url", task.info.DownloadUrl,
 		"error", err)
-	task.setError(err)
+	task.fail(err)
 }
 
 // shouldBanAgent determines if an agent should be banned based on its error statistics

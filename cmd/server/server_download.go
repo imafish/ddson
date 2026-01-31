@@ -1,9 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"log/slog"
 	"time"
 
+	"github.com/imafish/ddson/internal/httputil"
 	"github.com/imafish/ddson/internal/pb"
 )
 
@@ -13,6 +15,7 @@ func (s *server) Download(req *pb.DownloadRequest, stream pb.DDSONService_Downlo
 	// TODO: maybe later, only allow download from registered clients
 	slog.Warn("NOT checking client id for now. implement later")
 	agentID := 0
+	downloadUrl := req.GetUrl()
 
 	// Send initial status as PENDING
 	err := stream.Send(&pb.DownloadStatus{
@@ -36,6 +39,18 @@ func (s *server) Download(req *pb.DownloadRequest, stream pb.DDSONService_Downlo
 		return transferFileData(stream, cached)
 	} else {
 		slog.Info("File is not cached, proceed with download", "url", req.GetUrl())
+	}
+
+	// Check if server supports partial downloads
+	supportsPartial, totalSize, err := httputil.CheckPartialDownloadSupport(downloadUrl)
+	if err != nil {
+		slog.Error("Error checking partial download support", "error", err)
+		return err
+	}
+	if !supportsPartial {
+		slog.Warn("Server does not support partial downloads, downloading the whole file")
+		err = fmt.Errorf("server does not support partial downloads")
+		return err
 	}
 
 	// Create a task and add it to task list

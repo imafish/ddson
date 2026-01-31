@@ -13,7 +13,6 @@ import (
 	"log/slog"
 
 	"github.com/imafish/ddson/internal/common"
-	"github.com/imafish/ddson/internal/httputil"
 	"github.com/imafish/ddson/internal/pb"
 )
 
@@ -21,20 +20,6 @@ const CHUNK_SIZE = int64(10 * 1024 * 1024) // 10 MB
 
 func executeTask(task *taskInfo, server *server) {
 	defer task.markDone()
-
-	// Check if server supports partial downloads
-	supportsPartial, totalSize, err := httputil.CheckPartialDownloadSupport(task.downloadUrl)
-	if err != nil {
-		slog.Error("Error checking partial download support", "error", err)
-		task.setError(err)
-		return
-	}
-	if !supportsPartial {
-		slog.Warn("Server does not support partial downloads, downloading the whole file")
-		err = fmt.Errorf("server does not support partial downloads")
-		task.setError(err)
-		return
-	}
 
 	// create temporary folder in /tmp
 	tmpDir, err := os.MkdirTemp("", "ddson")

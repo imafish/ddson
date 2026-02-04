@@ -14,6 +14,7 @@ import (
 
 	"github.com/imafish/ddson/internal/agents"
 	"github.com/imafish/ddson/internal/common"
+	"github.com/imafish/ddson/internal/downloadtask"
 	"github.com/imafish/ddson/internal/logging"
 	"github.com/imafish/ddson/internal/pb"
 	"github.com/imafish/ddson/internal/persistency"
@@ -22,7 +23,7 @@ import (
 type server struct {
 	pb.UnimplementedDDSONServiceServer
 	agentManager *agents.AgentManager
-	taskList     *taskList
+	taskManager  downloadtask.TaskManager
 	persistency  *persistency.Persistency
 }
 
@@ -40,9 +41,10 @@ func newServer() *server {
 	}
 
 	agentManager := agents.NewAgentManagerWithDefaultConfig()
+	taskManager := downloadtask.NewTaskManagerImpl()
 	return &server{
 		agentManager: agentManager,
-		taskList:     newTaskList(),
+		taskManager:  taskManager,
 		persistency:  p,
 	}
 }
@@ -84,7 +86,6 @@ func main() {
 	serverInstance := newServer()
 	pb.RegisterDDSONServiceServer(s, serverInstance)
 
-	// Start task processing goroutine
 	go serverInstance.runTasks()
 
 	slog.Info("Server listening", "address", lis.Addr())
@@ -95,5 +96,7 @@ func main() {
 }
 
 func (s *server) runTasks() {
-	s.taskList.run(s)
+	s.taskManager.Run(func(task *downloadtask.Task) error {
+		return task.Run()
+	})
 }

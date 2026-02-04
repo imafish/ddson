@@ -1,4 +1,4 @@
-package main
+package downloadtask
 
 import (
 	"fmt"
@@ -27,6 +27,7 @@ const (
 	ErrCodeFileOpenFailed
 	ErrCodePermissionDenied
 	ErrCodeInvalidPath
+	ErrCodeTempDirCreationFailed
 	ErrCodeTempFileCleanup
 
 	// Bad Argument
@@ -34,6 +35,7 @@ const (
 	ErrCodeUnsupportedProtocol
 	ErrCodeHostUnreachable
 	ErrCodeDNSLookupFailed
+	ErrCodeDownloadTaskNotFound
 
 	// Connection errors (2xx)
 	ErrCodeRemoteErrorStart ErrorCode = iota + 500
@@ -86,14 +88,15 @@ const (
 // errorMessages maps error codes to their human-readable messages
 var errorMessages = map[ErrorCode]string{
 	// Local errors
-	ErrCodeInsufficientSpace: "insufficient disk space",
-	ErrCodeWriteFailed:       "failed to write to file",
-	ErrCodeReadFailed:        "failed to read from file",
-	ErrCodeFileCreateFailed:  "failed to create file",
-	ErrCodeFileOpenFailed:    "failed to open file",
-	ErrCodePermissionDenied:  "permission denied",
-	ErrCodeInvalidPath:       "invalid file path",
-	ErrCodeTempFileCleanup:   "failed to clean up temporary files",
+	ErrCodeInsufficientSpace:     "insufficient disk space",
+	ErrCodeWriteFailed:           "failed to write to file",
+	ErrCodeReadFailed:            "failed to read from file",
+	ErrCodeFileCreateFailed:      "failed to create file",
+	ErrCodeFileOpenFailed:        "failed to open file",
+	ErrCodePermissionDenied:      "permission denied",
+	ErrCodeInvalidPath:           "invalid file path",
+	ErrCodeTempFileCleanup:       "failed to clean up temporary files",
+	ErrCodeTempDirCreationFailed: "failed to create temporary directory",
 
 	ErrCodeUnknownDownloadError:  "unknown download error",
 	ErrCodeDownloadCancelled:     "download cancelled by user",
@@ -176,10 +179,8 @@ func (e ErrorCode) IsDownloadError() bool {
 }
 
 // TODO: Download error should have a field to link it to a task, because it is always from a download task
-// TODO: remove URL field
 // DownloadError wraps an error with additional context about the download or gRPC operation
 type DownloadError struct {
-	URL     string
 	Code    ErrorCode
 	Cause   error
 	Message string
@@ -194,9 +195,9 @@ func (e *DownloadError) Error() string {
 	if e.Code.IsGrpcError() {
 		if e.AgentID != -1 {
 			if e.Cause != nil {
-				return fmt.Sprintf("gRPC error [%d] [%s] for agent %s: %s - %v", e.Code, e.Method, e.AgentID, e.Message, e.Cause)
+				return fmt.Sprintf("gRPC error [%d] [%s] for agent %d: %s - %v", e.Code, e.Method, e.AgentID, e.Message, e.Cause)
 			}
-			return fmt.Sprintf("gRPC error [%d] [%s] for agent %s: %s", e.Code, e.Method, e.AgentID, e.Message)
+			return fmt.Sprintf("gRPC error [%d] [%s] for agent %d: %s", e.Code, e.Method, e.AgentID, e.Message)
 		}
 		if e.Cause != nil {
 			return fmt.Sprintf("gRPC error [%d] [%s]: %s - %v", e.Code, e.Method, e.Message, e.Cause)
@@ -205,12 +206,12 @@ func (e *DownloadError) Error() string {
 	}
 
 	if e.HTTPCode != 0 {
-		return fmt.Sprintf("download error [%d] for %s (HTTP %d): %s - %v", e.Code, e.URL, e.HTTPCode, e.Message, e.Cause)
+		return fmt.Sprintf("download error [%d] (HTTP %d): %s - %v", e.Code, e.HTTPCode, e.Message, e.Cause)
 	}
 	if e.Cause != nil {
-		return fmt.Sprintf("download error [%d] for %s: %s - %v", e.Code, e.URL, e.Message, e.Cause)
+		return fmt.Sprintf("download error [%d]: %s - %v", e.Code, e.Message, e.Cause)
 	}
-	return fmt.Sprintf("download error [%d] for %s: %s", e.Code, e.URL, e.Message)
+	return fmt.Sprintf("download error [%d]: %s", e.Code, e.Message)
 }
 
 func (e *DownloadError) Unwrap() error {
@@ -252,14 +253,13 @@ func (e *DownloadError) IsRetryable() bool {
 
 // analyze the error message and extract HTTP related issues from it.
 // TODO: This is ill-formed. Should return error in response. Should not use grpc error mechanism for this.
-func NewDownloadErrorFromError(url string, code ErrorCode, cause error, agentID int, method string) *DownloadError {
+func NewDownloadErrorFromError(code ErrorCode, cause error, agentID int, method string) *DownloadError {
 	httpCode := extractHTTPStatusCode(cause)
 	if httpCode != 0 {
-		return NewDownloadErrorWithHTTPCode(url, ErrCodeHTTPError, cause, httpCode)
+		return NewDownloadErrorWithHTTPCode(ErrCodeHTTPError, cause, httpCode)
 	}
 
 	return &DownloadError{
-		URL:     url,
 		Code:    code,
 		Cause:   cause,
 		AgentID: agentID,
@@ -268,9 +268,8 @@ func NewDownloadErrorFromError(url string, code ErrorCode, cause error, agentID 
 }
 
 // NewDownloadError creates a new DownloadError with an error code
-func NewDownloadError(url string, code ErrorCode, cause error) *DownloadError {
+func NewDownloadError(code ErrorCode, cause error) *DownloadError {
 	return &DownloadError{
-		URL:     url,
 		Code:    code,
 		Cause:   cause,
 		AgentID: -1,
@@ -278,9 +277,8 @@ func NewDownloadError(url string, code ErrorCode, cause error) *DownloadError {
 }
 
 // NewDownloadErrorWithMessage creates a new DownloadError with a custom message
-func NewDownloadErrorWithMessage(url string, code ErrorCode, message string) *DownloadError {
+func NewDownloadErrorWithMessage(code ErrorCode, message string) *DownloadError {
 	return &DownloadError{
-		URL:     url,
 		Code:    code,
 		Message: message,
 		AgentID: -1,
@@ -288,9 +286,8 @@ func NewDownloadErrorWithMessage(url string, code ErrorCode, message string) *Do
 }
 
 // NewDownloadErrorWithHTTPCode creates a new DownloadError with an HTTP status code
-func NewDownloadErrorWithHTTPCode(url string, code ErrorCode, cause error, httpCode int) *DownloadError {
+func NewDownloadErrorWithHTTPCode(code ErrorCode, cause error, httpCode int) *DownloadError {
 	return &DownloadError{
-		URL:      url,
 		Code:     code,
 		Cause:    cause,
 		HTTPCode: httpCode,
@@ -299,9 +296,8 @@ func NewDownloadErrorWithHTTPCode(url string, code ErrorCode, cause error, httpC
 }
 
 // NewGRPCError creates a new DownloadError for gRPC errors with agent context
-func NewGRPCError(url string, code ErrorCode, cause error, agentID int, method string) *DownloadError {
+func NewGRPCError(code ErrorCode, cause error, agentID int, method string) *DownloadError {
 	return &DownloadError{
-		URL:     url,
 		Code:    code,
 		Cause:   cause,
 		Method:  method,

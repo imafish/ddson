@@ -1,6 +1,6 @@
 package downloadtask
 
-type SubTask struct {
+type subTask struct {
 	downloadUrl  string
 	id           int
 	offset       uint64
@@ -9,8 +9,8 @@ type SubTask struct {
 	err          *DownloadError
 }
 
-func newDownloadSubTask(downloadUrl string, id int, offset uint64, downloadSize uint64, targetFile string) *SubTask {
-	return &SubTask{
+func newDownloadSubTask(downloadUrl string, id int, offset uint64, downloadSize uint64, targetFile string) *subTask {
+	return &subTask{
 		downloadUrl:  downloadUrl,
 		id:           id,
 		offset:       offset,

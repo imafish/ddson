@@ -14,26 +14,26 @@ import (
 // At present, it is highly coupled with current server implementation.
 
 type Task struct {
-	info              TaskInfo
+	info              taskInfo
 	taskStatusChannel chan TaskStatus
 
 	mtx        *sync.Mutex
 	taskStatus *TaskStatus
-	subtasks   []*SubTask
+	subtasks   []*subTask
 
 	// internal use, to manage task execution
 	abortFlag               bool     // to signal subtasks to abort
 	tmpFolder               string   // temporary folder to store subtask files
 	subtaskDoneChan         chan int // subtasks use this channel to report completion
-	errorHandler            *ErrorHandler
+	errorHandler            *errorHandler
 	agentManager            *agents.AgentManager
-	downloadStatusCollector *DownloadProgressCollector
+	downloadStatusCollector *downloadProgressCollector
 }
 
 func NewTask(downloadUrl string, checksum string, size uint64, stream pb.DDSONService_DownloadServer, taskId int, idOfClient int, agentManager *agents.AgentManager) *Task {
 	mtx := &sync.Mutex{}
 	task := &Task{
-		info: TaskInfo{
+		info: taskInfo{
 			DownloadUrl: downloadUrl,
 			Checksum:    checksum,
 			ID:          taskId,
@@ -45,24 +45,20 @@ func NewTask(downloadUrl string, checksum string, size uint64, stream pb.DDSONSe
 		taskStatus: &TaskStatus{
 			Status: TaskStatusNew,
 		},
-		subtasks: make([]*SubTask, 0),
+		subtasks: make([]*subTask, 0),
 
 		abortFlag:       false,
 		tmpFolder:       "",
 		subtaskDoneChan: make(chan int),
-		errorHandler:    NewErrorHandlerWithDefaults(agentManager),
+		errorHandler:    newErrorHandlerWithDefaults(agentManager),
 		agentManager:    agentManager,
 	}
-	task.downloadStatusCollector = NewDownloadStatusCollector(task)
+	task.downloadStatusCollector = newDownloadStatusCollector(task)
 	return task
 }
 
 func (t *Task) Run() error {
 	return runDownloadTask(t)
-}
-
-func (t *Task) GetTaskInfo() TaskInfo {
-	return t.info
 }
 
 func (t *Task) GetTaskStatusChannel() <-chan TaskStatus {
@@ -75,7 +71,7 @@ func (t *Task) GetTaskStatus() TaskStatus {
 	return *t.taskStatus
 }
 
-func (t *Task) UpdateAndSendTaskStatus(args ...any) {
+func (t *Task) updateAndSendTaskStatus(args ...any) {
 	t.mtx.Lock()
 	defer t.mtx.Unlock()
 	slog.Debug("UpdateAndSendTaskStatus", args...)

@@ -45,16 +45,17 @@
 | 15   | [ ]  |         | agent: vpn detection                                                          |
 | 16   | [ ]  |         | agent: multiple task support                                                  |
 | 17   | [ ]  |         | web UI                                                                        |
-| 23   | [ ]  |         | if a task is pending, periodically update status                              |
-| 9    | [ ]  |         | refactor, maybe re-write: split agent to agent and client                     |
+| 23   | [ ]  | ^       | if a task is pending, periodically update status                              |
+| 9    | [ ]  | ^       | refactor, maybe re-write: split agent to agent and client                     |
 | 11   | [ ]  | Testing | refactor: use AgentManager to manage agents                                   |
-| 12   | [ ]  | WIP     | refactor: use TaskManager to manage tasks                                     |
+| 12   | [ ]  | Testing | refactor: use TaskManager to manage tasks                                     |
 | 13   | [ ]  | Testing | refactor/fix: use ErrorHandler to handle errors (per task)                    |
 | 18   | [x]  |         | ~~refactor to standard go project layout~~                                    |
-| 19   | [ ]  |         | refactor: better structure                                                    |
+| 19   | [ ]  | Testing | refactor: better structure                                                    |
 | 21   | [x]  |         | ~~refactor: error-handler should not be a global singleton~~                  |
 | 20   | [ ]  | ^^^     | refactor, maybe re-write: Include errors in GRPC response, use *DownloadError |
-| 22   | [ ]  | ^       | a test plan                                                                   |
-| 22.1 | [ ]  | ^       | .   UT                                                                        |
-| 22.2 | [ ]  | ^       | .   GRPC interface test                                                       |
-| 22.3 | [ ]  | ^       | .   Integration test (with a python server as download source)                |
+| 22   | [ ]  | WIP     | a test plan                                                                   |
+| 22.1 | [ ]  | WIP     | .   UT                                                                        |
+| 22.2 | [ ]  | WIP     | .   GRPC interface test                                                       |
+| 22.3 | [ ]  | WIP     | .   Integration test (with a python server as download source)                |
+

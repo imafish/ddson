@@ -14,54 +14,49 @@ import (
 // TODO: later, we should not ban the agent if it is not recoverable error, but add the agent to a banned list per task
 // TODO: then we should have a global error handler to track errors across all tasks (for statistics)
 
-// TaskErrorStats tracks error statistics for a specific task
-type TaskErrorStats struct {
-	Errors map[int]int // subtaskID -> error count
-}
-
-// ErrorHandlerConfig holds configuration for the error handler
-type ErrorHandlerConfig struct {
+// errorHandlerConfig holds configuration for the error handler
+type errorHandlerConfig struct {
 	MaxSubtaskRetries int // Max retries per subtask before failing task
 	AgentBanDuration  int // Duration (in seconds) to ban an agent
 }
 
-// DefaultErrorHandlerConfig returns the default configuration
-func DefaultErrorHandlerConfig() ErrorHandlerConfig {
-	return ErrorHandlerConfig{
+// defaultErrorHandlerConfig returns the default configuration
+func defaultErrorHandlerConfig() errorHandlerConfig {
+	return errorHandlerConfig{
 		MaxSubtaskRetries: 3,
 		AgentBanDuration:  300, // 5 minutes
 	}
 }
 
-// ErrorHandler handles errors that occur during task and subtask execution
-// There should be one ErrorHandler per server instance
-type ErrorHandler struct {
+// errorHandler handles errors that occur during task and subtask execution
+// There should be one errorHandler per server instance
+type errorHandler struct {
 	mtx    sync.RWMutex
-	config ErrorHandlerConfig
+	config errorHandlerConfig
 	errors map[int]int // subtaskID -> error count
 
 	// Reference to agent list for direct actions
 	agentManager *agents.AgentManager
 }
 
-// NewErrorHandler creates a new ErrorHandler for a server instance
-func NewErrorHandler(config ErrorHandlerConfig, agentManager *agents.AgentManager) *ErrorHandler {
-	return &ErrorHandler{
+// newErrorHandler creates a new errorHandler for a server instance
+func newErrorHandler(config errorHandlerConfig, agentManager *agents.AgentManager) *errorHandler {
+	return &errorHandler{
 		config:       config,
 		errors:       make(map[int]int),
 		agentManager: agentManager,
 	}
 }
 
-// NewErrorHandlerWithDefaults creates a new ErrorHandler with default configuration
-func NewErrorHandlerWithDefaults(agentManager *agents.AgentManager) *ErrorHandler {
-	return NewErrorHandler(DefaultErrorHandlerConfig(), agentManager)
+// newErrorHandlerWithDefaults creates a new errorHandler with default configuration
+func newErrorHandlerWithDefaults(agentManager *agents.AgentManager) *errorHandler {
+	return newErrorHandler(defaultErrorHandlerConfig(), agentManager)
 }
 
-// HandleSubtaskError handles an error from a subtask execution.
+// handleSubtaskError handles an error from a subtask execution.
 // It logs the error, updates statistics, bans agents if needed, and fails the task if necessary.
 // Returns true if the task failed (caller should stop processing), false if subtask can be retried.
-func (h *ErrorHandler) HandleSubtaskError(task *Task, subtask *SubTask, agentID int, err *DownloadError) bool {
+func (h *errorHandler) handleSubtaskError(task *Task, subtask *subTask, agentID int, err *DownloadError) bool {
 	if err == nil {
 		return false
 	}
@@ -115,7 +110,7 @@ func (h *ErrorHandler) HandleSubtaskError(task *Task, subtask *SubTask, agentID 
 }
 
 // banAgent bans an agent by ID (must be called with lock held)
-func (h *ErrorHandler) banAgent(agentID int, reason string) {
+func (h *errorHandler) banAgent(agentID int, reason string) {
 	// Ban via agent manager
 	h.agentManager.DropAndBanAgent(agentID, time.Duration(h.config.AgentBanDuration)*time.Second, reason)
 
@@ -126,7 +121,7 @@ func (h *ErrorHandler) banAgent(agentID int, reason string) {
 }
 
 // failTask marks a task as failed
-func (h *ErrorHandler) failTask(task *Task, err *DownloadError) {
+func (h *errorHandler) failTask(task *Task, err *DownloadError) {
 	slog.Error("Failing task",
 		"taskID", task.info.ID,
 		"url", task.info.DownloadUrl,
@@ -135,7 +130,7 @@ func (h *ErrorHandler) failTask(task *Task, err *DownloadError) {
 }
 
 // shouldBanAgent determines if an agent should be banned based on its error statistics
-func (h *ErrorHandler) shouldBanAgent(err *DownloadError) bool {
+func (h *errorHandler) shouldBanAgent(err *DownloadError) bool {
 	if err == nil {
 		return false
 	}

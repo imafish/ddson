@@ -6,7 +6,7 @@ import (
 	"sync"
 )
 
-type TaskManagerImpl struct {
+type taskManagerImpl struct {
 	pendingTasks   []*Task
 	runningTasks   map[int]*Task // map of taskID to running tasks
 	completedTasks map[int]*Task // map of taskID to completed tasks
@@ -16,9 +16,9 @@ type TaskManagerImpl struct {
 	cond       *sync.Cond
 }
 
-func NewTaskManagerImpl() *TaskManagerImpl {
+func NewTaskManagerImpl() TaskManager {
 	mtx := &sync.Mutex{}
-	return &TaskManagerImpl{
+	return &taskManagerImpl{
 		pendingTasks:   make([]*Task, 0),
 		runningTasks:   make(map[int]*Task),
 		completedTasks: make(map[int]*Task),
@@ -27,7 +27,7 @@ func NewTaskManagerImpl() *TaskManagerImpl {
 	}
 }
 
-func (t *TaskManagerImpl) GetPendingTasks() []Task {
+func (t *taskManagerImpl) GetPendingTasks() []Task {
 	t.mtx.Lock()
 	defer t.mtx.Unlock()
 
@@ -38,7 +38,7 @@ func (t *TaskManagerImpl) GetPendingTasks() []Task {
 	return tasks
 }
 
-func (t *TaskManagerImpl) GetRunningTasks() []Task {
+func (t *taskManagerImpl) GetRunningTasks() []Task {
 	t.mtx.Lock()
 	defer t.mtx.Unlock()
 
@@ -49,7 +49,7 @@ func (t *TaskManagerImpl) GetRunningTasks() []Task {
 	return tasks
 }
 
-func (t *TaskManagerImpl) GetCompletedTasks() []Task {
+func (t *taskManagerImpl) GetCompletedTasks() []Task {
 	t.mtx.Lock()
 	defer t.mtx.Unlock()
 
@@ -60,7 +60,7 @@ func (t *TaskManagerImpl) GetCompletedTasks() []Task {
 	return tasks
 }
 
-func (t *TaskManagerImpl) GetTaskByID(taskID int) (Task, error) {
+func (t *taskManagerImpl) GetTaskByID(taskID int) (Task, error) {
 	t.mtx.Lock()
 	defer t.mtx.Unlock()
 
@@ -78,7 +78,7 @@ func (t *TaskManagerImpl) GetTaskByID(taskID int) (Task, error) {
 	return Task{}, NewDownloadErrorWithMessage(ErrCodeDownloadTaskNotFound, fmt.Sprintf("Task with ID %d not found", taskID))
 }
 
-func (t *TaskManagerImpl) AddTask(task *Task) int {
+func (t *taskManagerImpl) AddTask(task *Task) int {
 	t.mtx.Lock()
 
 	newId := t.nextTaskID
@@ -93,7 +93,7 @@ func (t *TaskManagerImpl) AddTask(task *Task) int {
 }
 
 // TODO: add a Stop() method
-func (t *TaskManagerImpl) Run(fn func(task *Task) error) {
+func (t *taskManagerImpl) Run(fn func(task *Task) error) {
 	for {
 		t.mtx.Lock()
 		for len(t.pendingTasks) == 0 {
@@ -126,7 +126,7 @@ func (t *TaskManagerImpl) Run(fn func(task *Task) error) {
 	}
 }
 
-func (t *TaskManagerImpl) findTaskInPendingTasksByIDLocked(taskID int) (int, *Task) {
+func (t *taskManagerImpl) findTaskInPendingTasksByIDLocked(taskID int) (int, *Task) {
 	for index, task := range t.pendingTasks {
 		if task.info.ID == taskID {
 			task.taskStatus.PositionInQueue = index

@@ -1,6 +1,6 @@
 package downloadtask
 
-type TaskInfo struct {
+type taskInfo struct {
 	ID          int
 	DownloadUrl string
 	Checksum    string

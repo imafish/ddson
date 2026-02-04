@@ -16,12 +16,12 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-const CHUNK_SIZE = uint64(10 * 1024 * 1024) // 10 MB
+const chunkSize = uint64(10 * 1024 * 1024) // 10 MB
 
 // run the download task.
 // execution status is reported via taskStatusChannel in DownloadTask
 func runDownloadTask(task *Task) *DownloadError {
-	task.UpdateAndSendTaskStatus("Status", TaskStatusPreparing)
+	task.updateAndSendTaskStatus("Status", TaskStatusPreparing)
 
 	// create temporary folder in /tmp
 	tmpDir, mkTmpDirErr := os.MkdirTemp("", "ddson")
@@ -39,7 +39,7 @@ func runDownloadTask(task *Task) *DownloadError {
 	totalSubTasks := len(task.subtasks)
 	slog.Info("Created sub tasks", "count", totalSubTasks)
 
-	task.UpdateAndSendTaskStatus("Status", TaskStatusDownloading)
+	task.updateAndSendTaskStatus("Status", TaskStatusDownloading)
 	startAllSubTasks(task)
 
 	completedTasks := 0
@@ -70,7 +70,7 @@ func runDownloadTask(task *Task) *DownloadError {
 	}
 	slog.Info("All subtasks executed", "count", totalSubTasks)
 
-	task.UpdateAndSendTaskStatus("Status", TaskStatusPostProcessing)
+	task.updateAndSendTaskStatus("Status", TaskStatusPostProcessing)
 	completeFile, downloadErr := combine(task.subtasks, task.info.Size)
 	if downloadErr != nil {
 		slog.Error("Error combining files", "error", downloadErr)
@@ -83,7 +83,7 @@ func runDownloadTask(task *Task) *DownloadError {
 	if task.info.Checksum != "" {
 		slog.Info("Validating combined file", "file", completeFile, "checksum", task.info.Checksum)
 		// TODO: nofity status as Validating
-		task.UpdateAndSendTaskStatus("Status", TaskStatusValidating)
+		task.updateAndSendTaskStatus("Status", TaskStatusValidating)
 		downloadErr = validateFile(completeFile, task.info.Checksum)
 		if downloadErr != nil {
 			slog.Error("Error validating file", "error", downloadErr)
@@ -94,20 +94,20 @@ func runDownloadTask(task *Task) *DownloadError {
 		slog.Info("No checksum provided, skipping validation")
 	}
 
-	task.UpdateAndSendTaskStatus("Status", TaskStatusDownloadCompleted)
+	task.updateAndSendTaskStatus("Status", TaskStatusDownloadCompleted)
 	slog.Info("Download task completed successfully", "file", completeFile)
 	return nil
 }
 
-func createSubtasks(task *Task) []*SubTask {
+func createSubtasks(task *Task) []*subTask {
 	totalSize := task.info.Size
 	tmpDir := task.tmpFolder
 	downloadUrl := task.info.DownloadUrl
 
-	subtasks := make([]*SubTask, 0, totalSize/CHUNK_SIZE+1)
+	subtasks := make([]*subTask, 0, totalSize/chunkSize+1)
 	i := 0
-	for offset := uint64(0); offset < totalSize; offset += CHUNK_SIZE {
-		downloadSize := CHUNK_SIZE
+	for offset := uint64(0); offset < totalSize; offset += chunkSize {
+		downloadSize := chunkSize
 		if offset+downloadSize > totalSize {
 			downloadSize = totalSize - offset
 		}
@@ -142,7 +142,7 @@ func getDebugFinishedString(finishedSubtasks map[int]bool) string {
 	return string(debugFinishedTaskBuffer)
 }
 
-func combine(subtasks []*SubTask, totalSize uint64) (string, *DownloadError) {
+func combine(subtasks []*subTask, totalSize uint64) (string, *DownloadError) {
 	// Create a new file to write the combined content
 	combinedFile, err := os.CreateTemp("", "combined_")
 	if err != nil {
@@ -220,7 +220,7 @@ func validateFile(file string, checksum string) *DownloadError {
 	return nil
 }
 
-func runSubtask(task *Task, subtask *SubTask) {
+func runSubtask(task *Task, subtask *subTask) {
 	slog.Debug("Executing subtask", "subtaskID", subtask.id, "offset", subtask.offset, "size", subtask.downloadSize, "targetFile", subtask.targetFile)
 	agentManager := task.agentManager
 	collector := task.downloadStatusCollector
@@ -236,22 +236,22 @@ func runSubtask(task *Task, subtask *SubTask) {
 		slog.Debug("Running subtask on agent", "subtaskID", subtask.id, "agentID", agent.GetID(), "agentAddr", agent.GetAddr())
 
 		// Notify collector about subtask start (OnSubtaskError already wiped data if this is a retry)
-		collector.OnSubtaskStart(subtask.id, agent.GetID())
+		collector.onSubtaskStart(subtask.id, agent.GetID())
 
 		err := downloadChunk(task, subtask, agent)
 		agentManager.ReleaseAgent(agent, err == nil)
 
 		if err == nil {
 			// Notify collector about successful completion
-			collector.OnSubtaskCompleted(subtask.id, subtask.targetFile)
+			collector.onSubtaskCompleted(subtask.id, subtask.targetFile)
 			break
 		}
 
 		// Notify collector about error
-		collector.OnSubtaskError(subtask.id, err)
+		collector.onSubtaskError(subtask.id, err)
 
 		// Let error handler decide what to do
-		taskFailed := task.errorHandler.HandleSubtaskError(task, subtask, agent.GetID(), err)
+		taskFailed := task.errorHandler.handleSubtaskError(task, subtask, agent.GetID(), err)
 		if taskFailed {
 			// Error handler failed the task - stop retrying
 			slog.Info("Task failed by error handler, stopping subtask", "subtaskID", subtask.id)
@@ -273,7 +273,7 @@ func runSubtask(task *Task, subtask *SubTask) {
 	slog.Debug("Subtask execution finished, task notified", "subtaskID", subtask.id)
 }
 
-func downloadChunk(task *Task, subtask *SubTask, agent *agents.AgentInfo) *DownloadError {
+func downloadChunk(task *Task, subtask *subTask, agent *agents.AgentInfo) *DownloadError {
 	downloadUrl, offset, downloadSize := subtask.downloadUrl, subtask.offset, subtask.downloadSize
 	agentEndpoint, agentID := agent.GetAddr(), agent.GetID()
 	subtaskID := subtask.id
@@ -345,7 +345,7 @@ func downloadChunk(task *Task, subtask *SubTask, agent *agents.AgentInfo) *Downl
 		case pb.DownloadStatusType_DOWNLOADING:
 			bytesDownloaded := resp.DownloadedBytes
 			slog.Log(context.Background(), slog.LevelDebug-1, "Agent downloaded bytes", "subtaskID", subtaskID, "agentID", agentID, "bytes", bytesDownloaded)
-			task.downloadStatusCollector.OnSubtaskProgress(subtaskID, bytesDownloaded)
+			task.downloadStatusCollector.onSubtaskProgress(subtaskID, bytesDownloaded)
 
 		case pb.DownloadStatusType_TRANSFERRING:
 			// Write the data to the file

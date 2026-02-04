@@ -6,9 +6,9 @@ import (
 	"time"
 )
 
-// DownloadProgressCollector collects and reports download status.
+// downloadProgressCollector collects and reports download status.
 // It collects download speed, subtasks, progress, errors, etc.
-type DownloadProgressCollector struct {
+type downloadProgressCollector struct {
 	task *Task
 	mtx  sync.Mutex
 
@@ -52,8 +52,8 @@ type speedSample struct {
 	bytes     int64
 }
 
-func NewDownloadStatusCollector(task *Task) *DownloadProgressCollector {
-	return &DownloadProgressCollector{
+func newDownloadStatusCollector(task *Task) *downloadProgressCollector {
+	return &downloadProgressCollector{
 		task:            task,
 		subtaskStats:    make(map[int]*subtaskStat),
 		agentStats:      make(map[int]*agentStat),
@@ -64,7 +64,7 @@ func NewDownloadStatusCollector(task *Task) *DownloadProgressCollector {
 	}
 }
 
-func (dsc *DownloadProgressCollector) OnSubtaskProgress(subtaskID int, downloadedBytes int64) {
+func (dsc *downloadProgressCollector) onSubtaskProgress(subtaskID int, downloadedBytes int64) {
 	dsc.mtx.Lock()
 	defer dsc.mtx.Unlock()
 
@@ -107,7 +107,7 @@ func (dsc *DownloadProgressCollector) OnSubtaskProgress(subtaskID int, downloade
 	}
 }
 
-func (dsc *DownloadProgressCollector) OnSubtaskStart(subtaskID int, agentID int) {
+func (dsc *downloadProgressCollector) onSubtaskStart(subtaskID int, agentID int) {
 	dsc.mtx.Lock()
 	defer dsc.mtx.Unlock()
 
@@ -137,11 +137,11 @@ func (dsc *DownloadProgressCollector) OnSubtaskStart(subtaskID int, agentID int)
 	// Update task status
 	runningCount := dsc.runningSubtasks
 	dsc.mtx.Unlock()
-	dsc.task.UpdateAndSendTaskStatus("DownloadingParts", runningCount)
+	dsc.task.updateAndSendTaskStatus("DownloadingParts", runningCount)
 	dsc.mtx.Lock()
 }
 
-func (dsc *DownloadProgressCollector) OnSubtaskError(subtaskID int, err *DownloadError) {
+func (dsc *downloadProgressCollector) onSubtaskError(subtaskID int, err *DownloadError) {
 	dsc.mtx.Lock()
 	defer dsc.mtx.Unlock()
 
@@ -179,11 +179,11 @@ func (dsc *DownloadProgressCollector) OnSubtaskError(subtaskID int, err *Downloa
 	runningCount := dsc.runningSubtasks
 	totalBytes := dsc.totalDownloadedBytes
 	dsc.mtx.Unlock()
-	dsc.task.UpdateAndSendTaskStatus("DownloadingParts", runningCount, "TotalDownloadedBytes", totalBytes)
+	dsc.task.updateAndSendTaskStatus("DownloadingParts", runningCount, "TotalDownloadedBytes", totalBytes)
 	dsc.mtx.Lock()
 }
 
-func (dsc *DownloadProgressCollector) OnSubtaskCompleted(subtaskID int, filePath string) {
+func (dsc *downloadProgressCollector) onSubtaskCompleted(subtaskID int, filePath string) {
 	dsc.mtx.Lock()
 	defer dsc.mtx.Unlock()
 
@@ -221,12 +221,12 @@ func (dsc *DownloadProgressCollector) OnSubtaskCompleted(subtaskID int, filePath
 	completedCount := dsc.completedSubtasks
 	runningCount := dsc.runningSubtasks
 	dsc.mtx.Unlock()
-	dsc.task.UpdateAndSendTaskStatus("DownloadedParts", completedCount, "DownloadingParts", runningCount)
+	dsc.task.updateAndSendTaskStatus("DownloadedParts", completedCount, "DownloadingParts", runningCount)
 	dsc.mtx.Lock()
 }
 
 // GetOverallStats returns overall download statistics
-func (dsc *DownloadProgressCollector) GetOverallStats() (totalBytes int64, speedBPS int, elapsedTime time.Duration, estimatedRemaining time.Duration) {
+func (dsc *downloadProgressCollector) getOverallStats() (totalBytes int64, speedBPS int, elapsedTime time.Duration, estimatedRemaining time.Duration) {
 	dsc.mtx.Lock()
 	defer dsc.mtx.Unlock()
 
@@ -246,7 +246,7 @@ func (dsc *DownloadProgressCollector) GetOverallStats() (totalBytes int64, speed
 }
 
 // GetAgentStats returns statistics for a specific agent
-func (dsc *DownloadProgressCollector) GetAgentStats(agentID int) (downloadedBytes int64, downloadCount int, avgSpeedBPS int) {
+func (dsc *downloadProgressCollector) getAgentStats(agentID int) (downloadedBytes int64, downloadCount int, avgSpeedBPS int) {
 	dsc.mtx.Lock()
 	defer dsc.mtx.Unlock()
 
@@ -266,7 +266,7 @@ func (dsc *DownloadProgressCollector) GetAgentStats(agentID int) (downloadedByte
 }
 
 // GetSubtaskStats returns statistics for a specific subtask
-func (dsc *DownloadProgressCollector) GetSubtaskStats(subtaskID int) (downloadedBytes int64, isCompleted bool) {
+func (dsc *downloadProgressCollector) getSubtaskStats(subtaskID int) (downloadedBytes int64, isCompleted bool) {
 	dsc.mtx.Lock()
 	defer dsc.mtx.Unlock()
 
@@ -280,7 +280,7 @@ func (dsc *DownloadProgressCollector) GetSubtaskStats(subtaskID int) (downloaded
 
 // calculateSpeedLocked calculates the current download speed using a sliding window
 // Must be called with mtx held
-func (dsc *DownloadProgressCollector) calculateSpeedLocked(now time.Time) {
+func (dsc *downloadProgressCollector) calculateSpeedLocked(now time.Time) {
 	cutoff := now.Add(-dsc.speedWindowSize)
 
 	// Remove old samples outside the window
@@ -319,7 +319,7 @@ func (dsc *DownloadProgressCollector) calculateSpeedLocked(now time.Time) {
 
 // updateTaskStatusLocked updates the task status with speed and calculated fields
 // Must be called with mtx held
-func (dsc *DownloadProgressCollector) updateTaskStatusLocked() {
+func (dsc *downloadProgressCollector) updateTaskStatusLocked() {
 	if dsc.task == nil {
 		return
 	}
@@ -348,7 +348,7 @@ func (dsc *DownloadProgressCollector) updateTaskStatusLocked() {
 	// Release our lock before updating task
 	dsc.mtx.Unlock()
 
-	dsc.task.UpdateAndSendTaskStatus(
+	dsc.task.updateAndSendTaskStatus(
 		"DownloadSpeed", speed,
 		"TotalDownloadedBytes", totalBytes,
 		"EstimatedRemainingTime", estimatedRemaining,
@@ -360,7 +360,7 @@ func (dsc *DownloadProgressCollector) updateTaskStatusLocked() {
 
 // getOrCreateAgentStatLocked gets or creates agent stats
 // Must be called with mtx held
-func (dsc *DownloadProgressCollector) getOrCreateAgentStatLocked(agentID int) *agentStat {
+func (dsc *downloadProgressCollector) getOrCreateAgentStatLocked(agentID int) *agentStat {
 	stat, exists := dsc.agentStats[agentID]
 	if !exists {
 		stat = &agentStat{

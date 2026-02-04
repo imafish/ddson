@@ -23,12 +23,17 @@ type AgentManager struct {
 
 func NewAgentManager(config *AgentManagerConfig) *AgentManager {
 	newAgentManager := &AgentManager{
-		config:        config,
-		agents:        make(map[int]*AgentInfo),
-		bannedAgents:  make(map[string]time.Time),
+		config: config,
+
+		mtx:             sync.RWMutex{},
+		agents:          make(map[int]*AgentInfo),
+		bannedAgents:    make(map[string]time.Time),
+		agentHeartbeats: make(map[int]time.Time),
+		nextAgentID:     1,
+
 		idleAgentChan: make(chan *AgentInfo, 100),
 		stopFlag:      make(chan struct{}),
-		nextAgentID:   1,
+		wg:            sync.WaitGroup{},
 	}
 
 	go newAgentManager.monitorHeartbeats()
@@ -74,6 +79,8 @@ func (am *AgentManager) RegisterAgent(endpoint string, name string, version stri
 	am.agentHeartbeats[agent.id] = time.Now()
 	am.nextAgentID++
 
+	am.putIdleAgentToQueue(agent)
+
 	return agent.id, nil
 }
 
@@ -115,10 +122,11 @@ func (am *AgentManager) GetIdleAgent(abortChan <-chan struct{}) *AgentInfo {
 		select {
 		case agent := <-am.idleAgentChan:
 			slog.Debug("GetIdleAgent returning agent", "agentID", agent.id)
-			am.mtx.Lock()
-			if agent.status != AgentStatusQueued {
-				slog.Warn("GetIdleAgent: agent status is not queued", "agentID", agent.id, "status", agent.status)
-				am.mtx.Unlock()
+			am.mtx.RLock()
+			isValid := am.isAgentValidLocked(agent)
+			am.mtx.RUnlock()
+			if !isValid {
+				slog.Debug("GetIdleAgent found invalid agent, retrying", "agentID", agent.id)
 				continue
 			}
 			agent.status = AgentStatusBusy
@@ -133,17 +141,6 @@ func (am *AgentManager) GetIdleAgent(abortChan <-chan struct{}) *AgentInfo {
 func (am *AgentManager) ReleaseAgent(agent *AgentInfo, successful bool) {
 	am.mtx.Lock()
 	defer am.mtx.Unlock()
-
-	// check if agent is still registered and not banned
-	_, exists := am.agents[agent.id]
-	if !exists {
-		slog.Warn("Agent is no longer registered, ignoring release", "agentID", agent.id)
-		return
-	}
-	if banUntil, banned := am.bannedAgents[agent.endpoint]; banned {
-		slog.Warn("Agent is banned, ignoring release", "agentID", agent.id, "banUntil", banUntil)
-		return
-	}
 
 	// update agent statistics
 	agent.statistics.TotalTasksRun++
@@ -160,16 +157,7 @@ func (am *AgentManager) ReleaseAgent(agent *AgentInfo, successful bool) {
 	}
 
 	// try putting the agent back to idle channel
-	select {
-	case am.idleAgentChan <- agent:
-		agent.status = AgentStatusQueued
-		am.scanAndQueueAgentsLocked()
-
-	default:
-		// the channel is full, mark the agent as idle
-		agent.status = AgentStatusIdle
-		slog.Warn("Idle agent channel is full, marking agent as idle without re-adding to channel", "agentID", agent.id)
-	}
+	am.putIdleAgentToQueue(agent)
 }
 
 func (am *AgentManager) GetAgentCount() int {
@@ -192,6 +180,7 @@ func (am *AgentManager) monitorHeartbeats() {
 		case <-ticker.C:
 			am.checkHeartbeats()
 		case <-am.stopFlag:
+			slog.Info("Stopping agent heartbeat monitor")
 			return
 		}
 	}
@@ -212,17 +201,28 @@ func (am *AgentManager) checkHeartbeats() {
 	}
 }
 
-func (am *AgentManager) scanAndQueueAgentsLocked() {
-	for _, agent := range am.agents {
-		if agent.status == AgentStatusIdle {
-			select {
-			case am.idleAgentChan <- agent:
-				slog.Debug("Queued idle agent", "agentID", agent.id)
-				agent.status = AgentStatusQueued
-			default:
-				// channel full, stop trying
-				return
-			}
-		}
+func (am *AgentManager) putIdleAgentToQueue(agent *AgentInfo) {
+	go func(am *AgentManager, agent *AgentInfo) {
+		agent.status = AgentStatusQueued
+		am.idleAgentChan <- agent
+		slog.Debug("Queued idle agent", "agentID", agent.id)
+	}(am, agent)
+}
+
+func (am *AgentManager) isAgentValidLocked(agent *AgentInfo) bool {
+	_, exists := am.agents[agent.id]
+	if !exists {
+		slog.Warn("Agent is no longer registered, ignoring release", "agentID", agent.id)
+		return false
 	}
+	if banUntil, banned := am.bannedAgents[agent.endpoint]; banned {
+		slog.Warn("Agent is banned, ignoring release", "agentID", agent.id, "banUntil", banUntil)
+		return false
+	}
+	if agent.status != AgentStatusQueued {
+		slog.Warn("Agent status is not queued during validation", "agentID", agent.id, "status", agent.status)
+		return false
+	}
+
+	return true
 }

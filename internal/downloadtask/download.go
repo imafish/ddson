@@ -32,7 +32,7 @@ func runDownloadTask(task *Task) *DownloadError {
 		return downloadErr
 	}
 	task.tmpFolder = tmpDir
-	slog.Info("saving temporary files", "dir", tmpDir)
+	slog.Info("temporary directory", "dir", tmpDir)
 
 	// create sub tasks
 	task.subtasks = createSubtasks(task)
@@ -233,10 +233,11 @@ func runSubtask(task *Task, subtask *SubTask) {
 			break
 		}
 
+		slog.Debug("Running subtask on agent", "subtaskID", subtask.id, "agentID", agent.GetID(), "agentAddr", agent.GetAddr())
+
 		// Notify collector about subtask start (OnSubtaskError already wiped data if this is a retry)
 		collector.OnSubtaskStart(subtask.id, agent.GetID())
 
-		slog.Debug("Running subtask on agent", "subtaskID", subtask.id, "agentID", agent.GetID(), "agentAddr", agent.GetAddr())
 		err := downloadChunk(task, subtask, agent)
 		agentManager.ReleaseAgent(agent, err == nil)
 

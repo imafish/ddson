@@ -75,35 +75,48 @@ func (t *Task) GetTaskStatus() TaskStatus {
 	return *t.taskStatus
 }
 
-func (t *Task) UpdateAndSendTaskStatus(field string, value interface{}, args ...interface{}) {
+func (t *Task) UpdateAndSendTaskStatus(args ...any) {
 	t.mtx.Lock()
 	defer t.mtx.Unlock()
+	slog.Debug("UpdateAndSendTaskStatus", args...)
 
-	switch field {
-	case "Status":
-		t.taskStatus.Status = value.(TaskStatusEnum)
-	case "Err":
-		t.taskStatus.Err = value.(*DownloadError)
-	case "DownloadedFilePath":
-		t.taskStatus.DownloadedFilePath = value.(string)
-	case "PositionInQueue":
-		t.taskStatus.PositionInQueue = value.(int)
-	case "TotalParts":
-		t.taskStatus.TotalParts = value.(int)
-	case "DownloadedParts":
-		t.taskStatus.DownloadedParts = value.(int)
-	case "DownloadingParts":
-		t.taskStatus.DownloadingParts = value.(int)
-	case "DownloadSpeed":
-		t.taskStatus.DownloadSpeed = value.(int)
-	case "TotalDownloadedBytes":
-		t.taskStatus.TotalDownloadedBytes = value.(int64)
-	case "EstimatedRemainingTime":
-		t.taskStatus.EstimatedRemainingTime = value.(time.Duration)
-	default:
-		slog.Warn("Unknown task status field", "field", field)
+	argLength := len(args)
+	if argLength < 2 {
+		panic("UpdateAndSendTaskStatus requires at least 2 arguments")
+	}
+	if argLength%2 != 0 {
+		panic("UpdateAndSendTaskStatus requires even number of arguments")
 	}
 
+	for i := 0; i < argLength; i += 2 {
+		field := args[i].(string)
+		value := args[i+1]
+
+		switch field {
+		case "Status":
+			t.taskStatus.Status = value.(TaskStatusEnum)
+		case "Err":
+			t.taskStatus.Err = value.(*DownloadError)
+		case "DownloadedFilePath":
+			t.taskStatus.DownloadedFilePath = value.(string)
+		case "PositionInQueue":
+			t.taskStatus.PositionInQueue = value.(int)
+		case "TotalParts":
+			t.taskStatus.TotalParts = value.(int)
+		case "DownloadedParts":
+			t.taskStatus.DownloadedParts = value.(int)
+		case "DownloadingParts":
+			t.taskStatus.DownloadingParts = value.(int)
+		case "DownloadSpeed":
+			t.taskStatus.DownloadSpeed = value.(int)
+		case "TotalDownloadedBytes":
+			t.taskStatus.TotalDownloadedBytes = value.(int64)
+		case "EstimatedRemainingTime":
+			t.taskStatus.EstimatedRemainingTime = value.(time.Duration)
+		default:
+			slog.Warn("Unknown task status field", "field", field)
+		}
+	}
 	t.sendStatusLockedNonBlocking()
 }
 

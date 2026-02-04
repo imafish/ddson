@@ -41,7 +41,7 @@ func (s *server) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.Reg
 	slog.Debug("Agent info", "endpoint", endpoint, "port", port, "version", req.Version, "name", req.Name)
 
 	// Create new agent
-	id, err := s.agentManager.RegisterAgent(req.Name, req.Version, endpoint)
+	id, err := s.agentManager.RegisterAgent(endpoint, req.Name, req.Version)
 	if err != nil {
 		slog.Error("Failed to register agent", "error", err, "name", req.Name, "address", agentAddr, "port", port)
 		return nil, err

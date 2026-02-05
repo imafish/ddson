@@ -36,6 +36,7 @@ func NewAgentManager(config *AgentManagerConfig) *AgentManagerImpl {
 		wg:            sync.WaitGroup{},
 	}
 
+	newAgentManager.wg.Add(1)
 	go newAgentManager.monitorHeartbeats()
 	return newAgentManager
 }
@@ -97,6 +98,10 @@ func (am *AgentManagerImpl) HeartbeatReceived(agentID int) bool {
 func (am *AgentManagerImpl) DropAndBanAgent(agentID int, duration time.Duration, reason string) {
 	am.mtx.Lock()
 	defer am.mtx.Unlock()
+	am.dropAndBanAgentLocked(agentID, duration, reason)
+}
+
+func (am *AgentManagerImpl) dropAndBanAgentLocked(agentID int, duration time.Duration, reason string) {
 
 	agent, exists := am.agents[agentID]
 	if !exists {
@@ -113,14 +118,17 @@ func (am *AgentManagerImpl) Stop() {
 	slog.Info("Stopping AgentManager")
 
 	close(am.stopFlag)
-	close(am.idleAgentChan)
 	am.wg.Wait()
+	close(am.idleAgentChan)
 }
 
 func (am *AgentManagerImpl) GetIdleAgent(abortChan <-chan struct{}) *AgentInfo {
 	for {
 		select {
 		case agent := <-am.idleAgentChan:
+			if agent == nil {
+				return nil
+			}
 			slog.Debug("GetIdleAgent returning agent", "agentID", agent.id)
 			am.mtx.RLock()
 			isValid := am.isAgentValidLocked(agent)
@@ -131,6 +139,8 @@ func (am *AgentManagerImpl) GetIdleAgent(abortChan <-chan struct{}) *AgentInfo {
 			}
 			agent.status = AgentStatusBusy
 			return agent
+		case <-am.stopFlag:
+			return nil
 		case <-abortChan:
 			slog.Debug("GetIdleAgent aborted")
 			return nil
@@ -151,7 +161,7 @@ func (am *AgentManagerImpl) ReleaseAgent(agent *AgentInfo, successful bool) {
 		agent.statistics.TotalErrors++
 		if agent.statistics.ConsecutiveErrors >= am.config.MaxConsecutiveErrors {
 			slog.Info("Agent has too many consecutive errors, dropping and banning", "agentID", agent.id)
-			am.DropAndBanAgent(agent.id, time.Duration(am.config.ConsecutiveErrorBanDurationSec)*time.Second, "too many consecutive errors")
+			am.dropAndBanAgentLocked(agent.id, time.Duration(am.config.ConsecutiveErrorBanDurationSec)*time.Second, "too many consecutive errors")
 			return
 		}
 	}
@@ -188,21 +198,31 @@ func (am *AgentManagerImpl) monitorHeartbeats() {
 
 func (am *AgentManagerImpl) checkHeartbeats() {
 	am.mtx.RLock()
-	defer am.mtx.RUnlock()
-
-	slog.Debug("Checking agent heartbeats", "agentCount", len(am.agentHeartbeats))
+	agentCount := len(am.agentHeartbeats)
+	toBan := make([]int, 0)
 	for agentID, lastHeartbeat := range am.agentHeartbeats {
 		slog.Debug("Agent heartbeat check", "agentID", agentID, "lastHeartbeat", lastHeartbeat)
 
 		if time.Since(lastHeartbeat) > time.Duration(am.config.HeartbeatTimeoutSec)*time.Second {
-			slog.Info("Agent heartbeat timeout, dropping and banning agent", "agentID", agentID)
-			am.DropAndBanAgent(agentID, time.Duration(am.config.HeartbeatBanDurationSec)*time.Second, "heartbeat timeout")
+			toBan = append(toBan, agentID)
 		}
+	}
+	am.mtx.RUnlock()
+
+	slog.Debug("Checking agent heartbeats", "agentCount", agentCount)
+	for _, agentID := range toBan {
+		slog.Info("Agent heartbeat timeout, dropping and banning agent", "agentID", agentID)
+		am.DropAndBanAgent(agentID, time.Duration(am.config.HeartbeatBanDurationSec)*time.Second, "heartbeat timeout")
 	}
 }
 
 func (am *AgentManagerImpl) putIdleAgentToQueue(agent *AgentInfo) {
 	go func(am *AgentManagerImpl, agent *AgentInfo) {
+		select {
+		case <-am.stopFlag:
+			return
+		default:
+		}
 		agent.status = AgentStatusQueued
 		am.idleAgentChan <- agent
 		slog.Debug("Queued idle agent", "agentID", agent.id)

@@ -118,3 +118,61 @@ func TestAgentManagerDropAndBan(t *testing.T) {
 		t.Fatalf("expected AgentIsBannedError, got %T", err)
 	}
 }
+
+func TestAgentManagerGetIdleAbort(t *testing.T) {
+	am := NewAgentManagerWithDefaultConfig()
+	defer am.Stop()
+
+	abort := make(chan struct{})
+	close(abort)
+	if agent := am.GetIdleAgent(abort); agent != nil {
+		t.Fatalf("expected nil agent on abort")
+	}
+}
+
+func TestAgentManagerReleaseBansOnConsecutiveErrors(t *testing.T) {
+	config := &AgentManagerConfig{
+		HeartbeatCheckIntervalSec:      1000,
+		HeartbeatTimeoutSec:            1000,
+		MaxConsecutiveErrors:           1,
+		HeartbeatBanDurationSec:        1,
+		ConsecutiveErrorBanDurationSec: 1,
+	}
+	am := NewAgentManager(config)
+	defer am.Stop()
+
+	_, err := am.RegisterAgent("endpoint-err", "agent-err", "v1")
+	if err != nil {
+		t.Fatalf("RegisterAgent error: %v", err)
+	}
+
+	abort := make(chan struct{})
+	agent := am.GetIdleAgent(abort)
+	if agent == nil {
+		close(abort)
+		t.Fatalf("expected non-nil agent")
+	}
+
+	am.ReleaseAgent(agent, false)
+	if am.GetAgentCount() != 0 {
+		close(abort)
+		t.Fatalf("expected count=0 after consecutive error ban, got %d", am.GetAgentCount())
+	}
+
+	_, err = am.RegisterAgent("endpoint-err", "agent-err", "v1")
+	if err == nil {
+		close(abort)
+		t.Fatalf("expected error when registering banned agent")
+	}
+	close(abort)
+}
+
+func TestAgentManagerDropAndBanUnknownAgent(t *testing.T) {
+	am := NewAgentManagerWithDefaultConfig()
+	defer am.Stop()
+
+	am.DropAndBanAgent(9999, time.Second, "unknown")
+	if am.GetAgentCount() != 0 {
+		t.Fatalf("expected count=0 after banning unknown agent, got %d", am.GetAgentCount())
+	}
+}

@@ -7,7 +7,7 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-type AgentManager struct {
+type AgentManagerImpl struct {
 	config *AgentManagerConfig
 
 	mtx             sync.RWMutex
@@ -21,8 +21,8 @@ type AgentManager struct {
 	wg            sync.WaitGroup
 }
 
-func NewAgentManager(config *AgentManagerConfig) *AgentManager {
-	newAgentManager := &AgentManager{
+func NewAgentManager(config *AgentManagerConfig) *AgentManagerImpl {
+	newAgentManager := &AgentManagerImpl{
 		config: config,
 
 		mtx:             sync.RWMutex{},
@@ -40,11 +40,11 @@ func NewAgentManager(config *AgentManagerConfig) *AgentManager {
 	return newAgentManager
 }
 
-func NewAgentManagerWithDefaultConfig() *AgentManager {
+func NewAgentManagerWithDefaultConfig() *AgentManagerImpl {
 	return NewAgentManager(NewDefaultAgentManagerConfig())
 }
 
-func (am *AgentManager) RegisterAgent(endpoint string, name string, version string) (int, error) {
+func (am *AgentManagerImpl) RegisterAgent(endpoint string, name string, version string) (int, error) {
 	am.mtx.Lock()
 	defer am.mtx.Unlock()
 
@@ -84,7 +84,7 @@ func (am *AgentManager) RegisterAgent(endpoint string, name string, version stri
 	return agent.id, nil
 }
 
-func (am *AgentManager) HeartbeatReceived(agentID int) bool {
+func (am *AgentManagerImpl) HeartbeatReceived(agentID int) bool {
 	am.mtx.Lock()
 	defer am.mtx.Unlock()
 	if _, exists := am.agents[agentID]; !exists {
@@ -94,7 +94,7 @@ func (am *AgentManager) HeartbeatReceived(agentID int) bool {
 	return true
 }
 
-func (am *AgentManager) DropAndBanAgent(agentID int, duration time.Duration, reason string) {
+func (am *AgentManagerImpl) DropAndBanAgent(agentID int, duration time.Duration, reason string) {
 	am.mtx.Lock()
 	defer am.mtx.Unlock()
 
@@ -109,7 +109,7 @@ func (am *AgentManager) DropAndBanAgent(agentID int, duration time.Duration, rea
 	delete(am.agentHeartbeats, agentID)
 }
 
-func (am *AgentManager) Stop() {
+func (am *AgentManagerImpl) Stop() {
 	slog.Info("Stopping AgentManager")
 
 	close(am.stopFlag)
@@ -117,7 +117,7 @@ func (am *AgentManager) Stop() {
 	am.wg.Wait()
 }
 
-func (am *AgentManager) GetIdleAgent(abortChan <-chan struct{}) *AgentInfo {
+func (am *AgentManagerImpl) GetIdleAgent(abortChan <-chan struct{}) *AgentInfo {
 	for {
 		select {
 		case agent := <-am.idleAgentChan:
@@ -138,7 +138,7 @@ func (am *AgentManager) GetIdleAgent(abortChan <-chan struct{}) *AgentInfo {
 	}
 }
 
-func (am *AgentManager) ReleaseAgent(agent *AgentInfo, successful bool) {
+func (am *AgentManagerImpl) ReleaseAgent(agent *AgentInfo, successful bool) {
 	am.mtx.Lock()
 	defer am.mtx.Unlock()
 
@@ -160,7 +160,7 @@ func (am *AgentManager) ReleaseAgent(agent *AgentInfo, successful bool) {
 	am.putIdleAgentToQueue(agent)
 }
 
-func (am *AgentManager) GetAgentCount() int {
+func (am *AgentManagerImpl) GetAgentCount() int {
 	am.mtx.RLock()
 	defer am.mtx.RUnlock()
 	return len(am.agents)
@@ -169,7 +169,7 @@ func (am *AgentManager) GetAgentCount() int {
 /*
  * private methods
  */
-func (am *AgentManager) monitorHeartbeats() {
+func (am *AgentManagerImpl) monitorHeartbeats() {
 	ticker := time.NewTicker(time.Duration(am.config.HeartbeatCheckIntervalSec) * time.Second)
 	defer ticker.Stop()
 	defer am.wg.Done()
@@ -186,7 +186,7 @@ func (am *AgentManager) monitorHeartbeats() {
 	}
 }
 
-func (am *AgentManager) checkHeartbeats() {
+func (am *AgentManagerImpl) checkHeartbeats() {
 	am.mtx.RLock()
 	defer am.mtx.RUnlock()
 
@@ -201,15 +201,15 @@ func (am *AgentManager) checkHeartbeats() {
 	}
 }
 
-func (am *AgentManager) putIdleAgentToQueue(agent *AgentInfo) {
-	go func(am *AgentManager, agent *AgentInfo) {
+func (am *AgentManagerImpl) putIdleAgentToQueue(agent *AgentInfo) {
+	go func(am *AgentManagerImpl, agent *AgentInfo) {
 		agent.status = AgentStatusQueued
 		am.idleAgentChan <- agent
 		slog.Debug("Queued idle agent", "agentID", agent.id)
 	}(am, agent)
 }
 
-func (am *AgentManager) isAgentValidLocked(agent *AgentInfo) bool {
+func (am *AgentManagerImpl) isAgentValidLocked(agent *AgentInfo) bool {
 	_, exists := am.agents[agent.id]
 	if !exists {
 		slog.Warn("Agent is no longer registered, ignoring release", "agentID", agent.id)

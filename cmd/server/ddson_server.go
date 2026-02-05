@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -22,7 +23,7 @@ import (
 
 type server struct {
 	pb.UnimplementedDDSONServiceServer
-	agentManager *agents.AgentManager
+	agentManager agents.AgentManager
 	taskManager  downloadtask.TaskManager
 	persistency  *persistency.Persistency
 }
@@ -96,7 +97,7 @@ func main() {
 }
 
 func (s *server) runTasks() {
-	s.taskManager.Run(func(task *downloadtask.Task) error {
+	s.taskManager.Run(context.Background(), func(task *downloadtask.Task) error {
 		return task.Run()
 	})
 }

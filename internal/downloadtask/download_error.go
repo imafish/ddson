@@ -2,7 +2,6 @@ package downloadtask
 
 import (
 	"fmt"
-	"log/slog"
 )
 
 // ErrorCode represents error codes as an enum type
@@ -310,7 +309,7 @@ func extractHTTPStatusCode(err error) int {
 		return 0
 	}
 
-	slog.Debug("Extracting HTTP status code from error", "error", err)
+	logger.Debug("Extracting HTTP status code from error", "error", err)
 
 	// Look for "unexpected HTTP status: <code> ..." or "unexpected HTTP status: <code>"
 	msg := err.Error()

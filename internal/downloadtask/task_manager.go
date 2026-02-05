@@ -1,5 +1,7 @@
 package downloadtask
 
+import "context"
+
 type TaskManager interface {
 	AddTask(task *Task) int
 	GetTaskByID(taskID int) (Task, error)
@@ -9,5 +11,6 @@ type TaskManager interface {
 	GetCompletedTasks() []Task
 
 	// a loop that executes tasks
-	Run(func(task *Task) error)
+	Run(ctx context.Context, fn func(task *Task) error)
+	Stop()
 }

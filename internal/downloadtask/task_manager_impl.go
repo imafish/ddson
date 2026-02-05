@@ -1,8 +1,8 @@
 package downloadtask
 
 import (
+	"context"
 	"fmt"
-	"log/slog"
 	"sync"
 )
 
@@ -14,6 +14,8 @@ type taskManagerImpl struct {
 	nextTaskID int
 	mtx        *sync.Mutex
 	cond       *sync.Cond
+	stopCh     chan struct{}
+	stopped    bool
 }
 
 func NewTaskManagerImpl() TaskManager {
@@ -24,6 +26,7 @@ func NewTaskManagerImpl() TaskManager {
 		completedTasks: make(map[int]*Task),
 		mtx:            mtx,
 		cond:           sync.NewCond(mtx),
+		stopCh:         make(chan struct{}),
 	}
 }
 
@@ -93,12 +96,25 @@ func (t *taskManagerImpl) AddTask(task *Task) int {
 }
 
 // TODO: add a Stop() method
-func (t *taskManagerImpl) Run(fn func(task *Task) error) {
+func (t *taskManagerImpl) Run(ctx context.Context, fn func(task *Task) error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	go func() {
+		<-ctx.Done()
+		t.Stop()
+	}()
+
 	for {
 		t.mtx.Lock()
-		for len(t.pendingTasks) == 0 {
-			slog.Info("task list empty, waiting...")
+		for len(t.pendingTasks) == 0 && !t.stopped {
+			logger.Info("task list empty, waiting...")
 			t.cond.Wait() // Wait for tasks to be added
+		}
+		if t.stopped {
+			t.mtx.Unlock()
+			return
 		}
 
 		// get the task on top
@@ -108,7 +124,7 @@ func (t *taskManagerImpl) Run(fn func(task *Task) error) {
 		t.runningTasks[id] = task
 		t.mtx.Unlock()
 
-		slog.Info("Got a task to run", "taskID", id, "url", task.info.DownloadUrl, "checksum", task.info.Checksum)
+		logger.Info("Got a task to run", "taskID", id, "url", task.info.DownloadUrl, "checksum", task.info.Checksum)
 
 		err := fn(task)
 
@@ -120,10 +136,22 @@ func (t *taskManagerImpl) Run(fn func(task *Task) error) {
 			t.completedTasks[id] = task
 		} else {
 			// TODO: maybe retry later
-			slog.Error("Task failed", "taskID", id, "error", err)
+			logger.Error("Task failed", "taskID", id, "error", err)
 		}
 		t.mtx.Unlock()
 	}
+}
+
+func (t *taskManagerImpl) Stop() {
+	t.mtx.Lock()
+	if t.stopped {
+		t.mtx.Unlock()
+		return
+	}
+	t.stopped = true
+	close(t.stopCh)
+	t.mtx.Unlock()
+	t.cond.Broadcast()
 }
 
 func (t *taskManagerImpl) findTaskInPendingTasksByIDLocked(taskID int) (int, *Task) {

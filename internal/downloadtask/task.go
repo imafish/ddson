@@ -1,12 +1,11 @@
 package downloadtask
 
 import (
-	"log/slog"
-	"os"
 	"sync"
 	"time"
 
 	"github.com/imafish/ddson/internal/agents"
+	"github.com/imafish/ddson/internal/common"
 	"github.com/imafish/ddson/internal/pb"
 )
 
@@ -26,11 +25,14 @@ type Task struct {
 	tmpFolder               string   // temporary folder to store subtask files
 	subtaskDoneChan         chan int // subtasks use this channel to report completion
 	errorHandler            *errorHandler
-	agentManager            *agents.AgentManager
+	agentManager            agents.AgentManager
 	downloadStatusCollector *downloadProgressCollector
+	clock                   common.Clock
+	subtaskExecutor         SubtaskExecutor
+	fs                      common.FileSystem
 }
 
-func NewTask(downloadUrl string, checksum string, size uint64, stream pb.DDSONService_DownloadServer, taskId int, idOfClient int, agentManager *agents.AgentManager) *Task {
+func NewTask(downloadUrl string, checksum string, size uint64, stream pb.DDSONService_DownloadServer, taskId int, idOfClient int, agentManager agents.AgentManager) *Task {
 	mtx := &sync.Mutex{}
 	task := &Task{
 		info: taskInfo{
@@ -52,8 +54,11 @@ func NewTask(downloadUrl string, checksum string, size uint64, stream pb.DDSONSe
 		subtaskDoneChan: make(chan int),
 		errorHandler:    newErrorHandlerWithDefaults(agentManager),
 		agentManager:    agentManager,
+		clock:           common.RealClock{},
+		subtaskExecutor: defaultSubtaskExecutor{},
+		fs:              common.OSFileSystem{},
 	}
-	task.downloadStatusCollector = newDownloadStatusCollector(task)
+	task.downloadStatusCollector = newDownloadStatusCollector(task, task.clock)
 	return task
 }
 
@@ -74,7 +79,7 @@ func (t *Task) GetTaskStatus() TaskStatus {
 func (t *Task) updateAndSendTaskStatus(args ...any) {
 	t.mtx.Lock()
 	defer t.mtx.Unlock()
-	slog.Debug("UpdateAndSendTaskStatus", args...)
+	logger.Debug("UpdateAndSendTaskStatus", args...)
 
 	argLength := len(args)
 	if argLength < 2 {
@@ -110,7 +115,7 @@ func (t *Task) updateAndSendTaskStatus(args ...any) {
 		case "EstimatedRemainingTime":
 			t.taskStatus.EstimatedRemainingTime = value.(time.Duration)
 		default:
-			slog.Warn("Unknown task status field", "field", field)
+			logger.Warn("Unknown task status field", "field", field)
 		}
 	}
 	t.sendStatusLockedNonBlocking()
@@ -134,11 +139,11 @@ func (t *Task) sendStatusLockedNonBlocking() {
 
 func (t *Task) Cleanup() {
 	if t.tmpFolder != "" {
-		os.RemoveAll(t.tmpFolder)
+		t.fs.RemoveAll(t.tmpFolder)
 		t.tmpFolder = ""
 	}
 	if t.taskStatus.DownloadedFilePath != "" {
-		os.Remove(t.taskStatus.DownloadedFilePath)
+		t.fs.Remove(t.taskStatus.DownloadedFilePath)
 		t.taskStatus.DownloadedFilePath = ""
 	}
 	close(t.taskStatusChannel)

@@ -1,16 +1,18 @@
 package downloadtask
 
 import (
-	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/imafish/ddson/internal/common"
 )
 
 // downloadProgressCollector collects and reports download status.
 // It collects download speed, subtasks, progress, errors, etc.
 type downloadProgressCollector struct {
-	task *Task
-	mtx  sync.Mutex
+	task  *Task
+	mtx   sync.Mutex
+	clock common.Clock
 
 	// Per-subtask statistics
 	subtaskStats map[int]*subtaskStat
@@ -52,15 +54,19 @@ type speedSample struct {
 	bytes     int64
 }
 
-func newDownloadStatusCollector(task *Task) *downloadProgressCollector {
+func newDownloadStatusCollector(task *Task, clock common.Clock) *downloadProgressCollector {
+	if clock == nil {
+		clock = common.RealClock{}
+	}
 	return &downloadProgressCollector{
 		task:            task,
+		clock:           clock,
 		subtaskStats:    make(map[int]*subtaskStat),
 		agentStats:      make(map[int]*agentStat),
-		taskStartTime:   time.Now(),
+		taskStartTime:   clock.Now(),
 		speedSamples:    make([]speedSample, 0),
 		speedWindowSize: time.Minute,
-		lastSpeedUpdate: time.Now(),
+		lastSpeedUpdate: clock.Now(),
 	}
 }
 
@@ -68,9 +74,9 @@ func (dsc *downloadProgressCollector) onSubtaskProgress(subtaskID int, downloade
 	dsc.mtx.Lock()
 	defer dsc.mtx.Unlock()
 
-	slog.Debug("Subtask progress", "subtaskID", subtaskID, "bytes", downloadedBytes)
+	logger.Debug("Subtask progress", "subtaskID", subtaskID, "bytes", downloadedBytes)
 
-	now := time.Now()
+	now := dsc.clock.Now()
 
 	// Update subtask stats
 	stat, exists := dsc.subtaskStats[subtaskID]
@@ -111,7 +117,7 @@ func (dsc *downloadProgressCollector) onSubtaskStart(subtaskID int, agentID int)
 	dsc.mtx.Lock()
 	defer dsc.mtx.Unlock()
 
-	now := time.Now()
+	now := dsc.clock.Now()
 
 	// Get or create subtask stats
 	stat, exists := dsc.subtaskStats[subtaskID]
@@ -147,11 +153,11 @@ func (dsc *downloadProgressCollector) onSubtaskError(subtaskID int, err *Downloa
 
 	stat, exists := dsc.subtaskStats[subtaskID]
 	if !exists {
-		slog.Error("Subtask error for unknown subtask", "subtaskID", subtaskID)
+		logger.Error("Subtask error for unknown subtask", "subtaskID", subtaskID)
 		return
 	}
 
-	slog.Warn("Subtask error, wiping progress",
+	logger.Warn("Subtask error, wiping progress",
 		"subtaskID", subtaskID,
 		"agentID", stat.agentID,
 		"wipedBytes", stat.downloadedBytes,
@@ -187,16 +193,16 @@ func (dsc *downloadProgressCollector) onSubtaskCompleted(subtaskID int, filePath
 	dsc.mtx.Lock()
 	defer dsc.mtx.Unlock()
 
-	now := time.Now()
+	now := dsc.clock.Now()
 
 	stat, exists := dsc.subtaskStats[subtaskID]
 	if !exists {
-		slog.Error("Subtask completed for unknown subtask", "subtaskID", subtaskID)
+		logger.Error("Subtask completed for unknown subtask", "subtaskID", subtaskID)
 		return
 	}
 
 	duration := now.Sub(stat.startTime)
-	slog.Info("Subtask completed",
+	logger.Info("Subtask completed",
 		"subtaskID", subtaskID,
 		"agentID", stat.agentID,
 		"bytes", stat.downloadedBytes,
@@ -232,7 +238,7 @@ func (dsc *downloadProgressCollector) getOverallStats() (totalBytes int64, speed
 
 	totalBytes = dsc.totalDownloadedBytes
 	speedBPS = dsc.currentSpeedBPS
-	elapsedTime = time.Since(dsc.taskStartTime)
+	elapsedTime = dsc.clock.Now().Sub(dsc.taskStartTime)
 
 	// Calculate estimated remaining time
 	if speedBPS > 0 && dsc.task != nil {
@@ -311,7 +317,7 @@ func (dsc *downloadProgressCollector) calculateSpeedLocked(now time.Time) {
 		dsc.currentSpeedBPS = 0
 	}
 
-	slog.Debug("Speed calculated",
+	logger.Debug("Speed calculated",
 		"speedBPS", dsc.currentSpeedBPS,
 		"samples", len(dsc.speedSamples),
 		"windowBytes", totalBytes)
@@ -337,7 +343,7 @@ func (dsc *downloadProgressCollector) updateTaskStatusLocked() {
 		}
 	}
 
-	slog.Debug("Updating task status",
+	logger.Debug("Updating task status",
 		"speedBPS", speed,
 		"totalBytes", totalBytes,
 		"totalParts", total,

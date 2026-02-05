@@ -1,7 +1,6 @@
 package downloadtask
 
 import (
-	"log/slog"
 	"sync"
 	"time"
 
@@ -36,11 +35,11 @@ type errorHandler struct {
 	errors map[int]int // subtaskID -> error count
 
 	// Reference to agent list for direct actions
-	agentManager *agents.AgentManager
+	agentManager agents.AgentManager
 }
 
 // newErrorHandler creates a new errorHandler for a server instance
-func newErrorHandler(config errorHandlerConfig, agentManager *agents.AgentManager) *errorHandler {
+func newErrorHandler(config errorHandlerConfig, agentManager agents.AgentManager) *errorHandler {
 	return &errorHandler{
 		config:       config,
 		errors:       make(map[int]int),
@@ -49,7 +48,7 @@ func newErrorHandler(config errorHandlerConfig, agentManager *agents.AgentManage
 }
 
 // newErrorHandlerWithDefaults creates a new errorHandler with default configuration
-func newErrorHandlerWithDefaults(agentManager *agents.AgentManager) *errorHandler {
+func newErrorHandlerWithDefaults(agentManager agents.AgentManager) *errorHandler {
 	return newErrorHandler(defaultErrorHandlerConfig(), agentManager)
 }
 
@@ -73,7 +72,7 @@ func (h *errorHandler) handleSubtaskError(task *Task, subtask *subTask, agentID 
 	retryCount := h.errors[subtaskID]
 
 	// 1. Log the error
-	slog.Error("Subtask error occurred",
+	logger.Error("Subtask error occurred",
 		"taskID", taskID,
 		"subtaskID", subtaskID,
 		"agentID", agentID,
@@ -92,7 +91,7 @@ func (h *errorHandler) handleSubtaskError(task *Task, subtask *subTask, agentID 
 	// Check if retry count reaches max
 	// TODO: should call h.shouldFailTask()...
 	if retryCount >= h.config.MaxSubtaskRetries {
-		slog.Error("Subtask exceeded max retries, failing task",
+		logger.Error("Subtask exceeded max retries, failing task",
 			"taskID", taskID,
 			"subtaskID", subtaskID,
 			"retryCount", retryCount,
@@ -102,7 +101,7 @@ func (h *errorHandler) handleSubtaskError(task *Task, subtask *subTask, agentID 
 	}
 
 	// Let subtask retry
-	slog.Info("Retryable error, subtask will retry",
+	logger.Info("Retryable error, subtask will retry",
 		"taskID", taskID,
 		"subtaskID", subtaskID,
 		"retryCount", retryCount)
@@ -114,7 +113,7 @@ func (h *errorHandler) banAgent(agentID int, reason string) {
 	// Ban via agent manager
 	h.agentManager.DropAndBanAgent(agentID, time.Duration(h.config.AgentBanDuration)*time.Second, reason)
 
-	slog.Warn("Agent banned",
+	logger.Warn("Agent banned",
 		"agentID", agentID,
 		"reason", reason,
 		"duration", h.config.AgentBanDuration)
@@ -122,7 +121,7 @@ func (h *errorHandler) banAgent(agentID int, reason string) {
 
 // failTask marks a task as failed
 func (h *errorHandler) failTask(task *Task, err *DownloadError) {
-	slog.Error("Failing task",
+	logger.Error("Failing task",
 		"taskID", task.info.ID,
 		"url", task.info.DownloadUrl,
 		"error", err)

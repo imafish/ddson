@@ -54,6 +54,7 @@
 | 19   | [ ]  | Testing | refactor: better structure                                                    |
 | 21   | [x]  |         | ~~refactor: error-handler should not be a global singleton~~                  |
 | 20   | [ ]  | ^^^     | refactor, maybe re-write: Include errors in GRPC response, use *DownloadError |
+| 23   | [ ]  | ^^      | pass the http credentials along with download requests                        |
 | 22   | [ ]  | WIP     | a test plan                                                                   |
 | 22.1 | [ ]  | WIP     | .   UT                                                                        |
 | 22.2 | [ ]  | WIP     | .   GRPC interface test                                                       |

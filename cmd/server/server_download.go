@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"time"
 
@@ -45,8 +46,15 @@ func (s *server) Download(req *pb.DownloadRequest, stream pb.DDSONService_Downlo
 		slog.Info("File is not cached, proceed with download", "url", req.GetUrl())
 	}
 
+	// Get credentials from .netrc
+	login, password, err := httputil.GetDataFromNetrc(downloadUrl)
+	if err != nil {
+		slog.Error("Error getting credentials from .netrc", "error", err)
+		return err
+	}
+
 	// Check if server supports partial downloads
-	supportsPartial, totalSize, err := httputil.CheckPartialDownloadSupport(downloadUrl)
+	supportsPartial, totalSize, err := httputil.CheckPartialDownloadSupport(downloadUrl, http.DefaultClient, login, password)
 	if err != nil {
 		slog.Error("Error checking partial download support", "error", err)
 		return err

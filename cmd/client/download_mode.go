@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 
 	"google.golang.org/grpc"
@@ -17,7 +18,13 @@ import (
 )
 
 func download() {
-	supportPartialDownload, totalSize, err := httputil.CheckPartialDownloadSupport(*downloadUrl)
+	login, password, err := httputil.GetDataFromNetrc(*downloadUrl)
+	if err != nil {
+		slog.Error("Failed to get credentials from .netrc", "error", err)
+		os.Exit(1)
+	}
+
+	supportPartialDownload, totalSize, err := httputil.CheckPartialDownloadSupport(*downloadUrl, http.DefaultClient, login, password)
 	if err != nil {
 		slog.Error("Failed to check partial download support", "error", err)
 		os.Exit(1)

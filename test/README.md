@@ -1,39 +1,58 @@
-# Integration Test Suite
+# Test Suite
 
-This directory contains the integration test infrastructure and tests for the DDSON distributed download system.
+This directory contains the test infrastructure and tests for the DDSON distributed download system.
 
 ## Status
 
-✅ **Implemented** - Core integration test infrastructure is complete and functional.
+✅ **Organized** - Tests are separated into integration tests (one real component) and e2e tests (all real components).
 
-### Test Results
-- **Combined Tests**: 8/8 passing ✅
-- **Server Tests**: 7/8 passing (1 timing-sensitive test)
-- **Agent Tests**: 7/8 passing (1 timing-sensitive test)
+### Test Architecture
+
+Tests are organized by isolation level:
+
+- **Integration Tests** (`test/integration/`): Test individual components with real executable + fake dependencies
+  - **Server Tests**: Real server executable + fake agent + fake download server
+  - **Agent Tests**: Real agent executable + fake server + fake download server
+
+- **E2E Tests** (`test/e2e/`): Test complete system with all real executables
+  - Real server executable + real agent executable + fake download server
 
 ## Directory Structure
 
 ```
 test/
-├── integration/           # Integration test suites
-│   ├── combined/         # Tests for server + agent + download server
-│   │   └── download_server_test.go
-│   ├── server/           # Server isolation tests
-│   │   └── registration_test.go
-│   └── agent/            # Agent isolation tests
-│       └── agent_test.go
+├── integration/           # Integration tests (one real component + fakes)
+│   ├── server/           # Server integration tests
+│   │   ├── server_test.go            # Real server + fake components
+│   │   └── registration_test.go      # Legacy mock-based tests
+│   └── agent/            # Agent integration tests
+│       ├── agent_test.go             # Real agent + fake components
+│       └── agent_test.go.bak         # Backup
+│
+├── e2e/                   # End-to-end tests (all real components)
+│   └── e2e_test.go                    # Real server + real agent + fake download
+│
+├── combined/              # Legacy tests (deprecated)
+│   ├── download_server_test.go       # Mock-based tests
+│   ├── real_integration_test.go      # In-process tests
+│   └── e2e_with_executables_test.go  # Old E2E tests (moved to test/e2e/)
 ├── mocks/                # Test infrastructure
-│   ├── common.go         # Shared utilities
-│   ├── download_server.go # Test HTTP download server
-│   ├── dummy_server.go   # Mock DDSON server
-│   └── dummy_agent.go    # Mock DDSON agent
+│   ├── common.go              # Shared utilities
+│   ├── download_server.go     # Test HTTP download server (fake)
+│   ├── dummy_server.go        # Mock DDSON server (fake)
+│   ├── dummy_agent.go         # Mock DDSON agent (fake)
+│   ├── executable_server.go   # Real server executable wrapper
+│   ├── executable_agent.go    # Real agent executable wrapper
+├── bin/                   # Test executables
+│   ├── ddson_server       # Compiled server for testing
+│   └── ddson_client       # Compiled agent for testing
 └── helpers/              # Test utilities
     └── setup.go          # Helper functions for tests
 ```
 
 ## Test Infrastructure Components
 
-### 1. Test Download Server (`mocks/download_server.go`)
+### 1. Test Download Server (`mocks/download_server.go`) - **Fake**
 A lightweight HTTP server that simulates real-world download scenarios.
 
 **Features**:
@@ -65,8 +84,58 @@ defer server.Stop()
 url := server.FileURL("test.bin")
 ```
 
-### 2. Dummy DDSON Server (`mocks/dummy_server.go`)
-Mock gRPC server implementing the DDSON service for testing agents.
+### 2. Executable Server (`mocks/executable_server.go`) - **Real** ⭐
+Wrapper for running the actual `ddson_server` executable in tests.
+
+**Features**:
+- Runs real compiled server binary
+- Automatic port allocation
+- Isolated workspace per instance
+- Log capture and parsing
+- Clean process management and cleanup
+
+**Usage**:
+```go
+server := mocks.NewExecutableServer(&mocks.ExecutableServerConfig{
+    ExecPath: "/path/to/ddson_server",
+    Port:     0,  // Auto-assign
+})
+
+server.Start()
+defer server.Stop()
+
+// Get server address
+addr := server.Addr()  // e.g., "localhost:54321"
+```
+
+### 3. Executable Agent (`mocks/executable_agent.go`) - **Real** ⭐
+Wrapper for running the actual `ddson_client` executable in tests.
+
+**Features**:
+- Runs real compiled agent binary
+- Automatic agent ID extraction from logs
+- Supports agent-mode execution
+- Log capture and parsing
+- Clean process management
+
+**Usage**:
+```go
+agent := mocks.NewExecutableAgent(&mocks.ExecutableAgentConfig{
+    ExecPath:   "/path/to/ddson_client",
+    ServerAddr: serverAddr,
+    AgentName:  "test-agent-1",
+    Port:       0,  // Auto-assign
+})
+
+agent.Start()
+defer agent.Stop()
+
+// Get agent ID
+agentID := agent.GetAgentID()
+```
+
+### 4. Dummy DDSON Server (`mocks/dummy_server.go`) - **Fake**
+Mock gRPC server implementing the DDSON service for testing agents in isolation.
 
 **Features**:
 - Agent registration and management
@@ -93,7 +162,7 @@ server.AssignTask(agentID, "task-1", "http://example.com/file.bin")
 agents := server.GetAgents()
 ```
 
-### 3. Dummy Agent (`mocks/dummy_agent.go`)
+### 5. Dummy Agent (`mocks/dummy_agent.go`) - **Fake**
 Mock agent client for testing server behavior.
 
 **Features**:
@@ -120,7 +189,50 @@ defer agent.Stop()
 agent.SimulateDownload("task-1", 5*time.Second, 1.0)
 ```
 
-### 4. Test Helpers (`helpers/setup.go`)
+### 4. Real Server Wrapper (`mocks/real_server.go`)
+Wraps the actual DDSON server implementation for testing.
+
+**Features**:
+- Uses real agent manager and task manager
+- Temporary workspace directory for isolation
+- Access to internal components for verification
+- Proper cleanup after tests
+
+**Usage**:
+```go
+server := mocks.NewRealServer(&mocks.RealServerConfig{
+    Port:     0,  // Random port
+    LogLevel: slog.LevelError,  // Quiet in tests
+})
+server.Start()
+defer server.Stop()
+
+// Access internal components
+agentManager := server.GetAgentManager()
+taskManager := server.GetTaskManager()
+```
+
+### 5. Real Agent Wrapper (`mocks/real_agent.go`)
+Wraps the actual DDSON agent implementation for testing.
+
+**Features**:
+- Uses real agent code from cmd/client
+- Automatic registration and heartbeats
+- Connection management
+- Proper cleanup
+
+**Usage**:
+```go
+agent := mocks.NewRealAgent(&mocks.RealAgentConfig{
+    ServerAddr:        "127.0.0.1:5510",
+    AgentName:         "test-agent",
+    HeartbeatInterval: 2 * time.Second,
+})
+agent.Start()
+defer agent.Stop()
+```
+
+### 6. Test Helpers (`helpers/setup.go`)
 Utility functions for test setup and assertions.
 
 **Features**:
@@ -132,62 +244,120 @@ Utility functions for test setup and assertions.
 
 ## Implemented Tests
 
-### Part 1: Combined Integration Tests
-Location: `test/integration/combined/`
+### Test Categories
 
-✅ **TestBasicDownloadServerSetup** - Verify test download server starts correctly  
-✅ **TestDownloadServerFileServing** - Test file serving with checksums  
-✅ **TestDownloadServerWithAuthentication** - Test authentication requirements  
-✅ **TestDownloadServerWithFailures** - Test failure simulation  
-✅ **TestDownloadServerWithDelay** - Test delay simulation  
-✅ **TestDownloadServerRangeRequests** - Test Range request support  
-✅ **TestDownloadServerMultipleFiles** - Test serving multiple files  
+#### 1. Integration Tests - Server (`test/integration/server/`)
+**Real Server + Fake Components**
 
-### Part 2: Server Isolation Tests
-Location: `test/integration/server/`
+Uses: `ExecutableServer` + `DummyAgent` + `DownloadServer`
 
-✅ **TestServerAgentRegistration** - Agent registration handling  
-✅ **TestServerMultipleAgentRegistration** - Multiple agents registering  
-⚠️ **TestServerHeartbeatManagement** - Heartbeat monitoring (timing sensitive)  
-✅ **TestServerTaskAssignment** - Task assignment to agents  
-✅ **TestServerProgressReporting** - Progress update handling  
-✅ **TestServerErrorReporting** - Error reporting handling  
-✅ **TestServerAgentReconnection** - Agent reconnection behavior  
+✅ **TestExecutableServerAgentRegistration** - Agent registration with real server  
+✅ **TestExecutableServerMultipleAgents** - Multiple agents registering  
+✅ **TestExecutableServerHeartbeatHandling** - Heartbeat handling  
+✅ **TestExecutableServerAgentReconnection** - Agent reconnection  
+✅ **TestExecutableServerWithDownloadServer** - Integration with download server  
+✅ **TestExecutableServerStopsCleanly** - Clean shutdown  
+✅ **TestExecutableServerWorkspaceIsolation** - Workspace isolation  
 
-### Part 3: Agent Isolation Tests
-Location: `test/integration/agent/`
+**7 tests** - Location: `test/integration/server/server_test.go`
 
-✅ **TestAgentRegistrationFlow** - Agent registration process  
-✅ **TestAgentHeartbeatTransmission** - Heartbeat sending  
-✅ **TestAgentProgressReporting** - Progress reporting  
-✅ **TestAgentErrorReporting** - Error reporting  
-⚠️ **TestAgentSimulatedDownload** - Simulated download (timing sensitive)  
-✅ **TestAgentFailureSimulation** - Failure simulation  
-✅ **TestAgentGracefulShutdown** - Graceful shutdown  
-✅ **TestMultipleAgentsWithSameServer** - Multiple agents scenario  
+#### 2. Integration Tests - Agent (`test/integration/agent/`)
+**Real Agent + Fake Components**
+
+Uses: `ExecutableAgent` + `DummyServer` + `DownloadServer`
+
+✅ **TestExecutableAgentRegistration** - Agent registration  
+✅ **TestExecutableAgentHeartbeat** - Heartbeat sending  
+✅ **TestExecutableAgentMultipleAgents** - Multiple agent instances  
+✅ **TestExecutableAgentWithDownloadServer** - Download task handling  
+✅ **TestExecutableAgentStopsCleanly** - Clean shutdown  
+✅ **TestExecutableAgentReconnection** - Reconnection handling  
+✅ **TestExecutableAgentWithAuth** - Authenticated downloads  
+
+**8 tests** - Location: `test/integration/agent/agent_test.go`
+
+#### 3. End-to-End Tests (`test/e2e/`)
+**Real Server + Real Agent + Fake Download Server**
+
+Uses: `ExecutableServer` + `ExecutableAgent` + `DownloadServer`
+
+✅ **TestE2EBasicDownload** - Basic end-to-end download  
+✅ **TestE2EMultipleAgents** - Multiple agents coordination  
+✅ **TestE2ELargeFileDownload** - Large file handling (10 MB)  
+✅ **TestE2EWithAuthentication** - Authenticated download flow  
+✅ **TestE2EPartialDownload** - Partial/range downloads  
+✅ **TestE2EAgentFailover** - Agent failover scenario  
+✅ **TestE2EStressTest** - System under load (5 agents, 5 files)  
+
+**8 tests** - Location: `test/e2e/e2e_test.go`
+
+## Test Architecture
+
+### Component Matrix
+
+| Test Type        | Server               | Agent               | Download Server     | Purpose                          |
+| ---------------- | -------------------- | ------------------- | ------------------- | -------------------------------- |
+| **Server Tests** | ✅ Real Executable    | ❌ Fake (DummyAgent) | ❌ Fake (TestServer) | Test server logic in isolation   |
+| **Agent Tests**  | ❌ Fake (DummyServer) | ✅ Real Executable   | ❌ Fake (TestServer) | Test agent logic in isolation    |
+| **E2E Tests**    | ✅ Real Executable    | ✅ Real Executable   | ❌ Fake (TestServer) | Test complete system integration |
+
+### Benefits of This Approach
+
+1. **True Integration Testing**: Uses actual compiled executables, not in-process mocks
+2. **Process Isolation**: Each test runs independent server/agent processes
+3. **Realistic Environment**: Tests subprocess management, IPC, signal handling
+4. **Parallel Execution**: Tests can run in parallel with `t.Parallel()`
+5. **No Docker Required**: Simple subprocess execution with temp directories
+6. **Easy Debugging**: Can attach debuggers to running test processes
+7. **Fast Iteration**: No Docker overhead, quick test execution
 
 ## Running Tests
 
-### Run all integration tests:
+### Build test executables first:
 ```bash
+cd test
+./build_test_binaries.sh
+```
+
+This creates:
+- `test/bin/ddson_server` - Server executable for testing
+- `test/bin/ddson_client` - Agent executable for testing
+
+### Run all tests:
+```bash
+# All tests (integration + e2e)
+go test ./test/integration/... ./test/e2e/... -v
+
+# Or separately
 go test ./test/integration/... -v
+go test ./test/e2e/... -v
 ```
 
 ### Run specific test suite:
 ```bash
-go test ./test/integration/combined/ -v
+# Server integration tests (real server + fake components)
 go test ./test/integration/server/ -v
+
+# Agent integration tests (real agent + fake components)
 go test ./test/integration/agent/ -v
+
+# End-to-end tests (all real components)
+go test ./test/e2e/ -v
+```
+
+### Run with parallel execution:
+```bash
+go test ./test/integration/... -v -parallel=4
 ```
 
 ### Run with timeout:
 ```bash
-go test ./test/integration/... -v -timeout=60s
+go test ./test/integration/... -v -timeout=120s
 ```
 
 ### Run specific test:
 ```bash
-go test ./test/integration/combined/ -v -run TestBasicDownloadServerSetup
+go test ./test/integration/combined/ -v -run TestE2EBasicDownload
 ```
 
 ### Run with race detector:

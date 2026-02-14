@@ -40,6 +40,10 @@ func runAgent() {
 		os.Exit(1)
 	}
 
+	// Get the actual port that was assigned (important when using port 0)
+	actualPort := lis.Addr().(*net.TCPAddr).Port
+	servicePort = &actualPort
+
 	s := grpc.NewServer(
 		grpc.KeepaliveParams(keepalive.ServerParameters{
 			Time:    10 * time.Second,

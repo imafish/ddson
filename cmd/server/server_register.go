@@ -49,6 +49,8 @@ func (s *server) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.Reg
 
 	slog.Info("Agent registered", "name", req.Name, "id", id, "address", endpoint)
 	return &pb.RegisterResponse{
+		Success:       true,
+		Message:       "Agent registered successfully",
 		Id:            int32(id),
 		ServerVersion: version.CurrentVersion().String(),
 	}, nil

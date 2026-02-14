@@ -32,4 +32,7 @@ cmd/server/server
 internal/pb/*.pb.go
 cmd/client/ddson_client_darwin_arm64
 
+# test binaries
+test/bin/
+
 output/

@@ -315,3 +315,77 @@ func TestServerAgentReconnection(t *testing.T) {
 	// For now, this creates a new registration
 	// In a real implementation, you might want to preserve the agent ID
 }
+
+// TestServerBansErroneousAgentAndFailsOver verifies the server bans a repeatedly failing agent
+// and completes the same task after reassigning it to a healthy agent.
+func TestServerBansErroneousAgentAndFailsOver(t *testing.T) {
+	server := mocks.NewDummyServer(&mocks.DummyServerConfig{
+		Port:              0,
+		HeartbeatTimeout:  30 * time.Second,
+		AgentBanThreshold: 3,
+	})
+
+	err := server.Start()
+	helpers.AssertNoError(t, err, "Failed to start dummy server")
+	defer server.Stop()
+
+	badAgent := mocks.NewDummyAgent(&mocks.DummyAgentConfig{
+		ServerAddr:        server.Addr(),
+		AgentName:         "bad-agent",
+		HeartbeatInterval: 2 * time.Second,
+		SimulateFailure:   true,
+	})
+	err = badAgent.Start()
+	helpers.AssertNoError(t, err, "Failed to start bad agent")
+	defer badAgent.Stop()
+
+	goodAgent := mocks.NewDummyAgent(&mocks.DummyAgentConfig{
+		ServerAddr:        server.Addr(),
+		AgentName:         "good-agent",
+		HeartbeatInterval: 2 * time.Second,
+	})
+	err = goodAgent.Start()
+	helpers.AssertNoError(t, err, "Failed to start good agent")
+	defer goodAgent.Stop()
+
+	err = server.WaitForAgents(2, 5*time.Second)
+	helpers.AssertNoError(t, err, "Expected both agents to register")
+
+	taskID := "failover-task-1"
+	err = server.AssignTask(badAgent.GetAgentID(), taskID, "http://example.com/file.bin")
+	helpers.AssertNoError(t, err, "Failed to assign task to bad agent")
+
+	for attempt := 1; attempt <= 3; attempt++ {
+		err = badAgent.SimulateDownload(server, taskID, 300*time.Millisecond, 1.0)
+		helpers.AssertNoError(t, err, "SimulateDownload call should complete while recording failure")
+
+		task, getTaskErr := server.GetTask(taskID)
+		helpers.AssertNoError(t, getTaskErr, "Failed to get task after failed attempt")
+		helpers.AssertEqual(t, "failed", task.Status, "Task should be marked failed after bad agent attempt")
+		t.Logf("Bad agent failure attempt %d recorded", attempt)
+	}
+
+	badInfo, err := server.GetAgent(badAgent.GetAgentID())
+	helpers.AssertNoError(t, err, "Failed to get bad agent info")
+	helpers.AssertEqual(t, "banned", badInfo.Status, "Bad agent should be banned after repeated failures")
+	helpers.AssertEqual(t, 3, server.GetAgentFailureCount(badAgent.GetAgentID()), "Bad agent failure count mismatch")
+
+	err = server.AssignTask(badAgent.GetAgentID(), "should-not-assign", "http://example.com/other.bin")
+	if err == nil {
+		t.Fatalf("expected assigning a task to banned agent to fail")
+	}
+
+	reassignedAgentID, err := server.ReassignTaskToAnyHealthyAgent(taskID)
+	helpers.AssertNoError(t, err, "Failed to reassign task to healthy agent")
+	helpers.AssertEqual(t, goodAgent.GetAgentID(), reassignedAgentID, "Task should be reassigned to good agent")
+
+	err = goodAgent.SimulateDownload(server, taskID, 300*time.Millisecond, 1.0)
+	helpers.AssertNoError(t, err, "Expected good agent to complete task")
+
+	task, err := server.GetTask(taskID)
+	helpers.AssertNoError(t, err, "Failed to read task after failover")
+	helpers.AssertEqual(t, "completed", task.Status, "Task should complete after failover")
+	helpers.AssertEqual(t, goodAgent.GetAgentID(), task.AssignedTo, "Task assignee should be good agent")
+
+	t.Logf("Task %s completed by healthy agent %s after banning %s", taskID, goodAgent.GetAgentID(), badAgent.GetAgentID())
+}

@@ -117,7 +117,7 @@ func (a *DummyAgent) Register() error {
 
 	req := &pb.RegisterRequest{
 		Name:    a.config.AgentName,
-		Version: "test-1.0.0",
+		Version: "0.0.2-dev",
 		Port:    a.config.Port,
 	}
 

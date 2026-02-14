@@ -2,6 +2,8 @@ package downloadtask
 
 import (
 	"fmt"
+
+	"github.com/imafish/ddson/internal/pb"
 )
 
 // ErrorCode represents error codes as an enum type
@@ -322,4 +324,51 @@ func extractHTTPStatusCode(err error) int {
 	}
 
 	return 0
+}
+
+// ToProto converts a DownloadError to a protobuf DownloadError message
+func (e *DownloadError) ToProto() *pb.DownloadError {
+	if e == nil {
+		return nil
+	}
+
+	pbErr := &pb.DownloadError{
+		Code:     int32(e.Code),
+		Message:  e.Message,
+		HttpCode: int32(e.HTTPCode),
+		Method:   e.Method,
+		AgentId:  int32(e.AgentID),
+	}
+
+	if e.Cause != nil {
+		pbErr.Cause = e.Cause.Error()
+	}
+
+	// Use the error message from the error code if no custom message is provided
+	if pbErr.Message == "" {
+		pbErr.Message = e.Code.String()
+	}
+
+	return pbErr
+}
+
+// FromProto converts a protobuf DownloadError message to a DownloadError
+func FromProto(pbErr *pb.DownloadError) *DownloadError {
+	if pbErr == nil {
+		return nil
+	}
+
+	err := &DownloadError{
+		Code:     ErrorCode(pbErr.Code),
+		Message:  pbErr.Message,
+		HTTPCode: int(pbErr.HttpCode),
+		Method:   pbErr.Method,
+		AgentID:  int(pbErr.AgentId),
+	}
+
+	if pbErr.Cause != "" {
+		err.Cause = fmt.Errorf("%s", pbErr.Cause)
+	}
+
+	return err
 }

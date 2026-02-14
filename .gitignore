@@ -35,4 +35,7 @@ cmd/client/ddson_client_darwin_arm64
 # test binaries
 test/bin/
 
+# binary files and build outputs
 output/
+/server
+/client

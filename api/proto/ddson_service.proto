@@ -63,6 +63,16 @@ enum DownloadStatusType {
   DOWNLOADING = 1;
   VALIDATING = 2;
   TRANSFERRING = 3;
+  ERROR = 4;
+}
+
+message DownloadError {
+  int32 code = 1;                 // Error code from ErrorCode enum
+  string message = 2;             // Error message
+  string cause = 3;               // Underlying error message (if any)
+  int32 http_code = 4;            // HTTP status code (for HTTP errors)
+  string method = 5;              // gRPC method name (for gRPC errors)
+  int32 agent_id = 6;             // Agent ID (for gRPC errors)
 }
 
 message DownloadStatus {
@@ -77,4 +87,5 @@ message DownloadStatus {
   int32 numberInQueue = 7;        // Number in the queue,
                                   // PENDING, server -> client
   string message = 8;             // Message, server -> client
+  DownloadError error = 9;        // Error information (if status is ERROR)
 }

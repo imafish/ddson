@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -50,6 +49,12 @@ func (s *server) Download(req *pb.DownloadRequest, stream pb.DDSONService_Downlo
 	login, password, err := httputil.GetDataFromNetrc(downloadUrl)
 	if err != nil {
 		slog.Error("Error getting credentials from .netrc", "error", err)
+		downloadErr := downloadtask.NewDownloadError(downloadtask.ErrCodeInvalidPath, err)
+		_ = stream.Send(&pb.DownloadStatus{
+			Status:  pb.DownloadStatusType_ERROR,
+			Error:   downloadErr.ToProto(),
+			Message: downloadErr.Error(),
+		})
 		return err
 	}
 
@@ -57,11 +62,23 @@ func (s *server) Download(req *pb.DownloadRequest, stream pb.DDSONService_Downlo
 	supportsPartial, totalSize, err := httputil.CheckPartialDownloadSupport(downloadUrl, http.DefaultClient, login, password)
 	if err != nil {
 		slog.Error("Error checking partial download support", "error", err)
+		downloadErr := downloadtask.NewDownloadErrorFromError(downloadtask.ErrCodeHTTPError, err, 0, "CheckPartialDownloadSupport")
+		_ = stream.Send(&pb.DownloadStatus{
+			Status:  pb.DownloadStatusType_ERROR,
+			Error:   downloadErr.ToProto(),
+			Message: downloadErr.Error(),
+		})
 		return err
 	}
 	if !supportsPartial {
 		slog.Warn("Server does not support partial downloads, downloading the whole file")
-		err = fmt.Errorf("server does not support partial downloads")
+		downloadErr := downloadtask.NewDownloadErrorWithMessage(downloadtask.ErrCodeRangeNotSupported, "server does not support partial downloads")
+		err = downloadErr
+		_ = stream.Send(&pb.DownloadStatus{
+			Status:  pb.DownloadStatusType_ERROR,
+			Error:   downloadErr.ToProto(),
+			Message: downloadErr.Error(),
+		})
 		return err
 	}
 
@@ -144,6 +161,7 @@ func reportStatus(status *downloadtask.TaskStatus, stream pb.DDSONService_Downlo
 		resp.NumberInQueue = int32(status.PositionInQueue)
 	case downloadtask.TaskStatusFailed:
 		if status.Err != nil {
+			resp.Error = status.Err.ToProto()
 			resp.Message = status.Err.Error()
 		}
 	}

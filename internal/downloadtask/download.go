@@ -363,6 +363,18 @@ func downloadChunk(task *Task, subtask *subTask, agent *agents.AgentInfo) *Downl
 			received += uint64(n)
 			logger.Debug("Data written to file", "subtaskID", subtaskID, "bytesWritten", n, "dataSize", dataSize, "totalReceived", received)
 
+		case pb.DownloadStatusType_ERROR:
+			// Handle error reported by the agent
+			logger.Error("Agent reported error", "subtaskID", subtaskID, "agentID", agentID)
+			if resp.Error != nil {
+				downloadErr := FromProto(resp.Error)
+				logger.Error("Error details from agent", "subtaskID", subtaskID, "error", downloadErr)
+				return downloadErr
+			}
+			// Fallback if no error details provided
+			logger.Error("Agent reported error without details", "subtaskID", subtaskID, "message", resp.GetMessage())
+			return NewDownloadErrorWithMessage(ErrCodeSubtaskFailed, fmt.Sprintf("agent error: %s", resp.GetMessage()))
+
 		default:
 			logger.Error("Unexpected status", "subtaskID", subtaskID, "status", resp.GetStatus())
 			return NewDownloadErrorWithMessage(ErrCodeUnexpectedStatus, fmt.Sprintf("unexpected status: %s", resp.GetStatus()))

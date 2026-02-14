@@ -53,10 +53,10 @@
 | 18   | [x]  |         | ~~refactor to standard go project layout~~                                    |
 | 19   | [ ]  | Testing | refactor: better structure                                                    |
 | 21   | [x]  |         | ~~refactor: error-handler should not be a global singleton~~                  |
-| 20   | [ ]  | ^^^     | refactor, maybe re-write: Include errors in GRPC response, use *DownloadError |
+| 20   | [x]  | Testing | refactor, maybe re-write: Include errors in GRPC response, use *DownloadError |
 | 23   | [ ]  | ^^      | pass the http credentials along with download requests                        |
-| 22   | [ ]  | WIP     | a test plan                                                                   |
-| 22.1 | [ ]  | WIP     | .   UT                                                                        |
-| 22.2 | [ ]  | WIP     | .   GRPC interface test                                                       |
-| 22.3 | [ ]  | WIP     | .   Integration test (with a python server as download source)                |
+| 22   | [x]  | WIP     | a test plan                                                                   |
+| 22.1 | [x]  | WIP     | .   UT                                                                        |
+| 22.2 | [x]  | WIP     | .   GRPC interface test                                                       |
+| 22.3 | [x]  | WIP     | .   Integration test (with a python server as download source)                |
 

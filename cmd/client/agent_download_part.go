@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/imafish/ddson/internal/common"
+	"github.com/imafish/ddson/internal/downloadtask"
 	"github.com/imafish/ddson/internal/httputil"
 	"github.com/imafish/ddson/internal/pb"
 )
@@ -23,6 +24,12 @@ func (c *client) DownloadPart(grpcRequest *pb.DownloadPartRequest, stream pb.DDS
 	username, password, err := httputil.GetDataFromNetrc(url)
 	if err != nil {
 		slog.Error("Failed to get credential data from .netrc file", "error", err)
+		downloadErr := downloadtask.NewDownloadError(downloadtask.ErrCodeInvalidPath, err)
+		_ = stream.Send(&pb.DownloadStatus{
+			Status:  pb.DownloadStatusType_ERROR,
+			Error:   downloadErr.ToProto(),
+			Message: downloadErr.Error(),
+		})
 		return err
 	}
 
@@ -30,6 +37,12 @@ func (c *client) DownloadPart(grpcRequest *pb.DownloadPartRequest, stream pb.DDS
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		slog.Error("Failed to create HTTP request", "error", err)
+		downloadErr := downloadtask.NewDownloadError(downloadtask.ErrCodeInvalidURL, err)
+		_ = stream.Send(&pb.DownloadStatus{
+			Status:  pb.DownloadStatusType_ERROR,
+			Error:   downloadErr.ToProto(),
+			Message: downloadErr.Error(),
+		})
 		return err
 	}
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", offset, offset+size-1))
@@ -42,13 +55,26 @@ func (c *client) DownloadPart(grpcRequest *pb.DownloadPartRequest, stream pb.DDS
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		slog.Error("Failed to download file", "error", err)
+		downloadErr := downloadtask.NewDownloadError(downloadtask.ErrCodeHostUnreachable, err)
+		_ = stream.Send(&pb.DownloadStatus{
+			Status:  pb.DownloadStatusType_ERROR,
+			Error:   downloadErr.ToProto(),
+			Message: downloadErr.Error(),
+		})
 		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
 		slog.Error("Unexpected HTTP status", "status", resp.Status)
-		return fmt.Errorf("unexpected HTTP status: %s", resp.Status)
+		err := fmt.Errorf("unexpected HTTP status: %s", resp.Status)
+		downloadErr := downloadtask.NewDownloadErrorWithHTTPCode(downloadtask.ErrCodeHTTPError, err, resp.StatusCode)
+		_ = stream.Send(&pb.DownloadStatus{
+			Status:  pb.DownloadStatusType_ERROR,
+			Error:   downloadErr.ToProto(),
+			Message: downloadErr.Error(),
+		})
+		return err
 	}
 
 	slog.Info("HTTP response OK, start downloading", "url", url, "status", resp.Status, "offset", offset, "size", size)
@@ -56,6 +82,12 @@ func (c *client) DownloadPart(grpcRequest *pb.DownloadPartRequest, stream pb.DDS
 	fullBuffer, err := downloadFromServer(resp, stream, size)
 	if err != nil {
 		slog.Error("Failed to download file", "error", err)
+		downloadErr := downloadtask.NewDownloadError(downloadtask.ErrCodePartialDownloadFailed, err)
+		_ = stream.Send(&pb.DownloadStatus{
+			Status:  pb.DownloadStatusType_ERROR,
+			Error:   downloadErr.ToProto(),
+			Message: downloadErr.Error(),
+		})
 		return err
 	}
 	slog.Info("Download completed", "duration", time.Since(startTime), "speed", common.PrettyFormatSpeed(int(float64(size)/time.Since(startTime).Seconds())), "size", common.PrettyFormatSize(size))
@@ -78,6 +110,12 @@ func (c *client) DownloadPart(grpcRequest *pb.DownloadPartRequest, stream pb.DDS
 		})
 		if err != nil {
 			slog.Error("Failed to send upload data", "error", err)
+			downloadErr := downloadtask.NewDownloadError(downloadtask.ErrCodeStreamSendFailed, err)
+			_ = stream.Send(&pb.DownloadStatus{
+				Status:  pb.DownloadStatusType_ERROR,
+				Error:   downloadErr.ToProto(),
+				Message: downloadErr.Error(),
+			})
 			return err
 		}
 

@@ -2,7 +2,7 @@ package version
 
 import "fmt"
 
-const VersionString = "0.0.2-dev"
+const VersionString = "0.1.0-dev"
 
 type Version struct {
 	Major  int

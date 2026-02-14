@@ -102,6 +102,15 @@ func (s *server) Download(req *pb.DownloadRequest, stream pb.DDSONService_Downlo
 		return finalStatus.Err
 	}
 
+	// transfer downloaded file to client
+	slog.Debug("Transferring file data")
+	if finalStatus.DownloadedFilePath != "" {
+		err = transferFileData(stream, finalStatus.DownloadedFilePath)
+		if err != nil {
+			slog.Error("Failed to transfer file data.", "error", err)
+		}
+	}
+
 	// TODO: move these to a background goroutine.
 	// save the downloaded file to persistency
 	if finalStatus.DownloadedFilePath != "" {

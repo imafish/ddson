@@ -5,4 +5,6 @@ type taskInfo struct {
 	DownloadUrl string
 	Checksum    string
 	Size        uint64
+	Username    string
+	Password    string
 }

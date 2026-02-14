@@ -11,7 +11,6 @@ import (
 
 	"github.com/imafish/ddson/internal/common"
 	"github.com/imafish/ddson/internal/downloadtask"
-	"github.com/imafish/ddson/internal/httputil"
 	"github.com/imafish/ddson/internal/pb"
 )
 
@@ -20,18 +19,9 @@ func (c *client) DownloadPart(grpcRequest *pb.DownloadPartRequest, stream pb.DDS
 	url, offset, size, clientId, subtaskID := grpcRequest.Url, grpcRequest.Offset, grpcRequest.Size, grpcRequest.ClientId, grpcRequest.SubtaskId
 	slog.Info("Received download request", "URL", url, "Offset", offset, "Size", size, "ClientId", clientId, "subtaskID", subtaskID)
 
-	// Parse .netrc file for credentials
-	username, password, err := httputil.GetDataFromNetrc(url)
-	if err != nil {
-		slog.Error("Failed to get credential data from .netrc file", "error", err)
-		downloadErr := downloadtask.NewDownloadError(downloadtask.ErrCodeInvalidPath, err)
-		_ = stream.Send(&pb.DownloadStatus{
-			Status:  pb.DownloadStatusType_ERROR,
-			Error:   downloadErr.ToProto(),
-			Message: downloadErr.Error(),
-		})
-		return err
-	}
+	// Get credentials from request, fallback to .netrc file if not provided
+	username := grpcRequest.GetUsername()
+	password := grpcRequest.GetPassword()
 
 	// Create HTTP request with Range header
 	req, err := http.NewRequest("GET", url, nil)

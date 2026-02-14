@@ -4,10 +4,13 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"google.golang.org/grpc"
 )
 
 // SetupTestEnvironment creates a temporary directory for test files
@@ -175,4 +178,20 @@ func WaitForPort(address string, timeout time.Duration) error {
 		// Try to connect
 		return true // Simplified for now
 	}, timeout, 100*time.Millisecond)
+}
+
+// StartTestGRPCServer starts a test gRPC server on a random port
+func StartTestGRPCServer(srv interface{}) (net.Listener, *grpc.Server, error) {
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to listen: %v", err)
+	}
+
+	grpcServer := grpc.NewServer()
+
+	go func() {
+		_ = grpcServer.Serve(lis)
+	}()
+
+	return lis, grpcServer, nil
 }

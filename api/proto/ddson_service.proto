@@ -47,6 +47,8 @@ message DownloadRequest {
   string checksum = 3;
   int32 client_id = 5; // TODO: this is ignored for now. later we will use it to
                        // identify the client
+  string username = 6; // Username for authentication
+  string password = 7; // Password for authentication
 }
 
 message DownloadPartRequest {
@@ -56,6 +58,8 @@ message DownloadPartRequest {
   int64 size = 4;
   int32 client_id = 5;
   int32 subtask_id = 6;
+  string username = 7; // Username for authentication
+  string password = 8; // Password for authentication
 }
 
 enum DownloadStatusType {

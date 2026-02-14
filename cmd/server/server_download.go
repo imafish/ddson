@@ -45,17 +45,12 @@ func (s *server) Download(req *pb.DownloadRequest, stream pb.DDSONService_Downlo
 		slog.Info("File is not cached, proceed with download", "url", req.GetUrl())
 	}
 
-	// Get credentials from .netrc
-	login, password, err := httputil.GetDataFromNetrc(downloadUrl)
-	if err != nil {
-		slog.Error("Error getting credentials from .netrc", "error", err)
-		downloadErr := downloadtask.NewDownloadError(downloadtask.ErrCodeInvalidPath, err)
-		_ = stream.Send(&pb.DownloadStatus{
-			Status:  pb.DownloadStatusType_ERROR,
-			Error:   downloadErr.ToProto(),
-			Message: downloadErr.Error(),
-		})
-		return err
+	var login, password string
+	// Override with credentials from request if provided
+	if req.GetUsername() != "" {
+		login = req.GetUsername()
+		password = req.GetPassword()
+		slog.Info("Using credentials from request", "username", login)
 	}
 
 	// Check if server supports partial downloads
@@ -83,7 +78,7 @@ func (s *server) Download(req *pb.DownloadRequest, stream pb.DDSONService_Downlo
 	}
 
 	// Create a task and add it to task list
-	task := downloadtask.NewTask(req.GetUrl(), req.GetChecksum(), uint64(totalSize), stream, 0, agentID, s.agentManager)
+	task := downloadtask.NewTask(req.GetUrl(), req.GetChecksum(), uint64(totalSize), stream, 0, agentID, s.agentManager, login, password)
 	defer task.Cleanup()
 	_ = s.taskManager.AddTask(task)
 

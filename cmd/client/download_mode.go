@@ -49,6 +49,8 @@ func download() {
 		ClientId: int32(0), // TODO: currently client id is ignored. later will be used to identify the client
 		Url:      *downloadUrl,
 		Checksum: *sha256,
+		Username: login,
+		Password: password,
 	}
 
 	// Send the request and receive the stream

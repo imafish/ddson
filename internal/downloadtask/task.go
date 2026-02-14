@@ -32,7 +32,7 @@ type Task struct {
 	fs                      common.FileSystem
 }
 
-func NewTask(downloadUrl string, checksum string, size uint64, stream pb.DDSONService_DownloadServer, taskId int, idOfClient int, agentManager agents.AgentManager) *Task {
+func NewTask(downloadUrl string, checksum string, size uint64, stream pb.DDSONService_DownloadServer, taskId int, idOfClient int, agentManager agents.AgentManager, username string, password string) *Task {
 	mtx := &sync.Mutex{}
 	task := &Task{
 		info: taskInfo{
@@ -40,6 +40,8 @@ func NewTask(downloadUrl string, checksum string, size uint64, stream pb.DDSONSe
 			Checksum:    checksum,
 			ID:          taskId,
 			Size:        size,
+			Username:    username,
+			Password:    password,
 		},
 		taskStatusChannel: make(chan TaskStatus, 10),
 

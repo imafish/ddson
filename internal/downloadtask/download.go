@@ -309,6 +309,8 @@ func downloadChunk(task *Task, subtask *subTask, agent *agents.AgentInfo) *Downl
 		Size:      int64(downloadSize),
 		SubtaskId: int32(subtaskID),
 		ClientId:  int32(agentID),
+		Username:  task.info.Username,
+		Password:  task.info.Password,
 	})
 	if err != nil {
 		logger.Error("Error sending download request", "subtaskID", subtaskID, "error", err)
